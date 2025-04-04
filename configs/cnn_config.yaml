@@ -1,0 +1,19 @@
+learning_rate: 0.001
+batch_size: 32
+num_epochs: 50
+input_shape:
+  height: 64
+  width: 64
+  channels: 3
+num_classes: 10
+optimizer: Adam
+loss_function: categorical_crossentropy
+dropout_rate: 0.5
+augmentation:
+  rotation_range: 20
+  width_shift_range: 0.2
+  height_shift_range: 0.2
+  shear_range: 0.2
+  zoom_range: 0.2
+  horizontal_flip: true
+  fill_mode: nearest
