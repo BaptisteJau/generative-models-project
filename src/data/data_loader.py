@@ -12,6 +12,17 @@ import zipfile
 import io
 import yaml
 
+def get_data_dir():
+    """Return the path to the data directory, creating it if it doesn't exist"""
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Also create subdirectories for different types of data
+    text_dir = os.path.join(data_dir, "text")
+    os.makedirs(text_dir, exist_ok=True)
+    
+    return data_dir
+
 class ImageDataset(Dataset):
     def __init__(self, image_dir, transform=None):
         self.image_dir = image_dir
@@ -291,117 +302,127 @@ def get_diffusion_data_loader(source, batch_size=32, image_size=64):
     return train_loader
 
 class TransformerTextDataset(Dataset):
-    """Dataset avec fonctionnalités avancées de tokenisation pour les modèles Transformer"""
-    def __init__(self, file_path=None, text_data=None, tokenizer=None, block_size=128, stride=64):
+    def __init__(self, text_path=None, text_data=None, tokenizer=None, block_size=128):
         """
+        Initialize the text dataset for transformer models
+        
         Args:
-            file_path: Chemin vers le fichier texte
-            text_data: Liste de textes si déjà chargés
-            tokenizer: Tokenizer à utiliser (sinon utilise GPT-2)
-            block_size: Taille maximale des séquences
-            stride: Chevauchement entre blocs consécutifs
+            text_path: Path to text file
+            text_data: Direct string data to use (alternative to text_path)
+            tokenizer: Optional pretrained tokenizer
+            block_size: Context window size
         """
-        if tokenizer is None:
-            self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
+        assert text_path is not None or text_data is not None, "Either text_path or text_data must be provided"
+        
+        # Load the text
+        if text_data is not None:
+            self.text = text_data
         else:
-            self.tokenizer = tokenizer
-            
+            with open(text_path, 'r', encoding='utf-8') as f:
+                self.text = f.read()
+        
+        # If no tokenizer provided, use GPT2Tokenizer
+        if tokenizer is None:
+            from transformers import GPT2Tokenizer
+            tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+            # Add padding token if it doesn't exist
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+        
+        self.tokenizer = tokenizer
+        
+        # Tokenize the entire text
+        self.tokenized_text = self.tokenizer.encode(self.text)
+        
+        # Create examples of length block_size
         self.block_size = block_size
-        self.stride = stride
         
-        # Charger les textes
-        if file_path is not None:
-            if file_path.endswith('.txt'):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    text = f.read()
-                self.examples = self._tokenize_and_chunk(text)
-            elif file_path.endswith('.csv'):
-                import pandas as pd
-                df = pd.read_csv(file_path)
-                text_column = 'text' if 'text' in df.columns else df.columns[0]
-                texts = df[text_column].tolist()
-                self.examples = []
-                for text in texts:
-                    self.examples.extend(self._tokenize_and_chunk(text))
-        elif text_data is not None:
-            self.examples = []
-            for text in text_data:
-                self.examples.extend(self._tokenize_and_chunk(text))
-    
-    def _tokenize_and_chunk(self, text):
-        """Tokenize et divise le texte en chunks avec chevauchement"""
-        tokenized = self.tokenizer.encode(text)
-        examples = []
-        
-        # Créer des chunks avec chevauchement
-        for i in range(0, len(tokenized) - self.block_size + 1, self.stride):
-            input_ids = tokenized[i:i + self.block_size]
-            examples.append({
-                "input_ids": input_ids[:-1],  # entrée: tous sauf le dernier token
-                "labels": input_ids[1:]       # cible: tous sauf le premier token (décalage de 1)
-            })
-            
-        return examples
+        # Create examples
+        self.examples = []
+        for i in range(0, len(self.tokenized_text) - block_size, block_size):
+            self.examples.append(self.tokenized_text[i:i + block_size + 1])  # +1 to include target token
     
     def __len__(self):
         return len(self.examples)
     
     def __getitem__(self, idx):
-        item = self.examples[idx]
+        # Get sequence of tokens
+        tokens = self.examples[idx]
+        x = tokens[:-1]  # Input sequence
+        y = tokens[1:]   # Output sequence (shifted by 1)
+        
+        # Convert to tensors
+        input_ids = torch.tensor(x, dtype=torch.long)
+        labels = torch.tensor(y, dtype=torch.long)
+        
+        # Return dictionary format for compatibility with TransformerTrainer
         return {
-            "input_ids": torch.tensor(item["input_ids"], dtype=torch.long),
-            "labels": torch.tensor(item["labels"], dtype=torch.long)
+            "input_ids": input_ids,
+            "labels": labels,
+            "attention_mask": torch.ones_like(input_ids)  # All tokens are attended to
         }
 
-def get_transformer_data_loader(source, batch_size=16, tokenizer=None, block_size=128):
+def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokenizer=None, block_size=128):
     """
-    Chargeur de données spécialisé pour les modèles Transformer génératifs
+    Get data loaders for transformer models
     
     Args:
-        source: Chemin vers le fichier texte ou nom du dataset
-        batch_size: Taille du batch
-        tokenizer: Tokenizer à utiliser
-        block_size: Taille maximale des séquences
-        
-    Returns:
-        DataLoader pour modèle Transformer génératif
-    """
-    # Pour des datasets standards
-    if source.lower() in ['wikitext', 'tiny_shakespeare']:
-        dataset = get_text_dataset(source)
-        
-        # Convertir en format pour Transformer
-        transformer_dataset = TransformerTextDataset(
-            text_data=dataset.texts if hasattr(dataset, 'texts') else dataset,
-            tokenizer=tokenizer,
-            block_size=block_size
-        )
-    else:
-        # Fichier texte ou CSV
-        transformer_dataset = TransformerTextDataset(
-            file_path=source,
-            tokenizer=tokenizer,
-            block_size=block_size
-        )
+        source: Path to text file or dataset name
+        batch_size: Batch size for training
+        tokenizer: Optional pretrained tokenizer
+        block_size: Context window size
     
-    # Diviser en train/val
+    Returns:
+        train_loader, val_loader: DataLoaders for training and validation
+    """
+    # Handle standard datasets
+    if source == 'tiny_shakespeare':
+        source = os.path.join(get_data_dir(), 'text/tiny_shakespeare.txt')
+        
+        # Check if the file exists, download if it doesn't
+        if not os.path.exists(source):
+            print(f"Downloading tiny_shakespeare.txt to {source}")
+            url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+            os.makedirs(os.path.dirname(source), exist_ok=True)
+            response = requests.get(url)
+            with open(source, 'wb') as f:
+                f.write(response.content)
+                
+    elif not os.path.exists(source):
+        raise ValueError(f"Source {source} not found")
+    
+    # Create dataset
+    transformer_dataset = TransformerTextDataset(
+        text_path=source,
+        tokenizer=tokenizer,
+        block_size=block_size
+    )
+    
+    # Get vocab size from the dataset's tokenizer for model creation
+    vocab_size = len(transformer_dataset.tokenizer.vocab) if hasattr(transformer_dataset.tokenizer, 'vocab') else transformer_dataset.tokenizer.vocab_size
+    
+    # Store the vocab size as an attribute of the dataset for later use
+    transformer_dataset.vocab_size = vocab_size
+    
+    # Split into train and validation
     train_size = int(0.9 * len(transformer_dataset))
     val_size = len(transformer_dataset) - train_size
+    
     train_dataset, val_dataset = random_split(transformer_dataset, [train_size, val_size])
     
-    # Créer les DataLoaders
+    # Create data loaders
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
+        train_dataset,
+        batch_size=batch_size,
         shuffle=True,
-        collate_fn=transformer_collate_fn
+        num_workers=0
     )
     
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=batch_size, 
+        val_dataset,
+        batch_size=batch_size,
         shuffle=False,
-        collate_fn=transformer_collate_fn
+        num_workers=0
     )
     
     return train_loader, val_loader

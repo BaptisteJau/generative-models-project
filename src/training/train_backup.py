@@ -8,7 +8,11 @@ from datetime import datetime
 # Ajouter le répertoire parent au path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.data.data_loader import load_data, get_transformer_data_loader
+from src.data.data_loader import load_data, get_gan_data_loader, get_diffusion_data_loader, get_transformer_data_loader
+from src.models.cnn.deep_cnn import DeepCNN
+from src.models.transformer.transformer_model import TransformerModel  
+from src.models.diffusion.diffusion_model import DiffusionModel
+from src.training.trainer import create_trainer
 
 def load_configuration(config_path):
     """Charge la configuration depuis un fichier YAML"""
@@ -27,9 +31,6 @@ def build_model(model_type, config):
         Instance du modèle
     """
     if model_type.lower() == 'cnn':
-        # Import only when needed
-        from src.models.cnn.deep_cnn import DeepCNN
-        
         # Pour le modèle CNN génératif (GAN)
         input_shape = (
             config.get('input_shape', {}).get('height', 64),
@@ -40,9 +41,6 @@ def build_model(model_type, config):
         return DeepCNN(input_shape=input_shape, latent_dim=latent_dim)
         
     elif model_type.lower() == 'transformer':
-        # Import only when needed
-        from src.models.transformer.transformer_model import TransformerModel
-        
         # Pour le modèle Transformer
         vocab_size = config.get('vocab_size', 30000)
         d_model = config.get('embedding_dim', 512)
@@ -63,9 +61,6 @@ def build_model(model_type, config):
         )
         
     elif model_type.lower() == 'diffusion':
-        # Import only when needed
-        from src.models.diffusion.diffusion_model import DiffusionModel
-        
         # Pour le modèle de diffusion
         diffusion_config = {
             'image_size': config.get('image_size', 64),
@@ -104,9 +99,8 @@ def setup_optimizers(model, model_type, config):
             model.d_optimizer = d_optimizer
         
     elif model_type.lower() == 'transformer':
-        # Create optimizer and attach it to the model
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        model.optimizer = optimizer
+        return optimizer
         
     elif model_type.lower() == 'diffusion':
         # L'optimiseur est généralement géré dans le DiffusionModel
@@ -126,18 +120,10 @@ def get_data_loaders(model_type, config):
     dataset_name = config.get('dataset_name', None)
     dataset_path = config.get('dataset_path', None)
     
-    # Set default dataset based on model type
-    if model_type.lower() == 'transformer':
-        # For transformer models, use a text dataset by default
-        source = dataset_name or dataset_path or 'tiny_shakespeare'  # Default to tiny_shakespeare for text
-    else:
-        # For image-based models (CNN, diffusion), use an image dataset by default
-        source = dataset_name or dataset_path or 'cifar10'  # Default to cifar10 for images
+    # Source peut être un nom de dataset standard ou un chemin
+    source = dataset_name or dataset_path or 'cifar10'  # Par défaut
     
     if model_type.lower() == 'cnn':
-        # Import only when needed
-        from src.data.data_loader import get_gan_data_loader
-        
         # Pour les GANs, nous avons besoin d'un chargeur spécial
         train_loader = get_gan_data_loader(
             source, 
@@ -147,9 +133,6 @@ def get_data_loaders(model_type, config):
         return train_loader, None  # GANs n'ont généralement pas de validation
         
     elif model_type.lower() == 'diffusion':
-        # Import only when needed
-        from src.data.data_loader import get_diffusion_data_loader
-        
         # Pour les modèles de diffusion
         train_loader = get_diffusion_data_loader(
             source, 
@@ -159,9 +142,6 @@ def get_data_loaders(model_type, config):
         return train_loader, None  # Modèles de diffusion n'utilisent pas de validation classique
         
     elif model_type.lower() == 'transformer':
-        # Import only when needed
-        from src.data.data_loader import get_transformer_data_loader
-        
         # Pour les modèles Transformer
         tokenizer = None  # On peut ajouter le chargement du tokenizer spécifique ici
         block_size = config.get('max_sequence_length', 128)
@@ -196,24 +176,14 @@ def train_model(model_type, config_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # Load data loaders first to get vocab size for transformer
+    # Charger les données
     train_loader, val_loader = get_data_loaders(model_type, config)
     
-    # Capture vocab size from data loader if it's a transformer
-    if (model_type.lower() == 'transformer'):
-        # Extract vocab size from the dataset of the train loader
-        vocab_size = train_loader.dataset.dataset.vocab_size if hasattr(train_loader.dataset, 'dataset') else 50257
-        # Update config with the correct vocab size
-        config['vocab_size'] = vocab_size
-    
-    # Build model with updated config
+    # Construire le modèle
     model = build_model(model_type, config)
     
     # Configurer les optimiseurs
     model = setup_optimizers(model, model_type, config)
-    
-    # Import the trainer creator only when needed
-    from src.training.trainer import create_trainer
     
     # Créer le trainer adapté
     trainer = create_trainer(model_type, model, train_loader, val_loader, config)

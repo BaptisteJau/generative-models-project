@@ -319,11 +319,19 @@ class TransformerTrainer(BaseTrainer):
     
     def __init__(self, model, train_loader, val_loader=None, config=None):
         super().__init__(model, train_loader, val_loader, config)
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.config.get('learning_rate', 3e-5)
-        )
+        
+        # Use optimizer from model or create a new one
+        self.optimizer = getattr(model, 'optimizer', None)
+        if self.optimizer is None:
+            lr = config.get('learning_rate', 0.001)
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=lr
+            )
+        
         self.criterion = nn.CrossEntropyLoss()
+        self.device = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = self.model.to(self.device)
         
     def train(self):
         """Entraîner le modèle Transformer pour la génération de texte"""
