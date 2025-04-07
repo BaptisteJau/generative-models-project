@@ -87,21 +87,40 @@ def setup_optimizers(model, model_type, config):
     lr = config.get('learning_rate', 0.001)
     
     if model_type.lower() == 'cnn':
-        # Pour PyTorch CNN (GAN)
-        if not hasattr(model, 'optimizer'):  # Si l'optimiseur n'est pas déjà défini dans le modèle
-            g_optimizer = torch.optim.Adam(
-                model.generator.parameters(), 
-                lr=lr,
-                betas=(0.5, 0.999)
-            )
-            d_optimizer = torch.optim.Adam(
-                model.discriminator.parameters(),
-                lr=lr,
-                betas=(0.5, 0.999)
-            )
-            # Attacher les optimiseurs au modèle
-            model.g_optimizer = g_optimizer
-            model.d_optimizer = d_optimizer
+        # Pour CNN (GAN)
+        if not hasattr(model, 'optimizer'):
+            # Vérifier si c'est un modèle Keras (qui utilise Sequential)
+            if hasattr(model, 'generator') and 'keras' in str(type(model.generator)):
+                # Utiliser les optimiseurs Keras pour les modèles Keras
+                import tensorflow as tf
+                g_optimizer = tf.keras.optimizers.Adam(
+                    learning_rate=lr,
+                    beta_1=0.5, 
+                    beta_2=0.999
+                )
+                d_optimizer = tf.keras.optimizers.Adam(
+                    learning_rate=lr,
+                    beta_1=0.5, 
+                    beta_2=0.999
+                )
+                # Attacher les optimiseurs au modèle
+                model.g_optimizer = g_optimizer
+                model.d_optimizer = d_optimizer
+            else:
+                # Pour les modèles PyTorch standard
+                g_optimizer = torch.optim.Adam(
+                    model.generator.parameters(),
+                    lr=lr,
+                    betas=(0.5, 0.999)
+                )
+                d_optimizer = torch.optim.Adam(
+                    model.discriminator.parameters(),
+                    lr=lr,
+                    betas=(0.5, 0.999)
+                )
+                # Attacher les optimiseurs au modèle
+                model.g_optimizer = g_optimizer
+                model.d_optimizer = d_optimizer
         
     elif model_type.lower() == 'transformer':
         # Create optimizer and attach it to the model

@@ -302,65 +302,56 @@ def get_diffusion_data_loader(source, batch_size=32, image_size=64):
     return train_loader
 
 class TransformerTextDataset(Dataset):
-    def __init__(self, text_path=None, text_data=None, tokenizer=None, block_size=128):
+    def __init__(self, text_data=None, text_path=None, tokenizer=None, block_size=128):
         """
-        Initialize the text dataset for transformer models
+        Dataset pour modèles Transformer de génération de texte
         
         Args:
-            text_path: Path to text file
-            text_data: Direct string data to use (alternative to text_path)
-            tokenizer: Optional pretrained tokenizer
-            block_size: Context window size
+            text_data: Texte brut ou chemin vers un fichier texte
+            tokenizer: Tokenizer à utiliser (si None, utilise GPT2Tokenizer)
+            block_size: Taille maximale des séquences
         """
-        assert text_path is not None or text_data is not None, "Either text_path or text_data must be provided"
-        
-        # Load the text
-        if text_data is not None:
-            self.text = text_data
-        else:
-            with open(text_path, 'r', encoding='utf-8') as f:
-                self.text = f.read()
-        
-        # If no tokenizer provided, use GPT2Tokenizer
-        if tokenizer is None:
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            # Add padding token if it doesn't exist
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-        
-        self.tokenizer = tokenizer
-        
-        # Tokenize the entire text
-        self.tokenized_text = self.tokenizer.encode(self.text)
-        
-        # Create examples of length block_size
         self.block_size = block_size
         
-        # Create examples
+        # Pour compatibilité avec les appels existants
+        if text_data is None and text_path is not None:
+            text_data = text_path
+        
+        # Charger le texte si c'est un chemin de fichier
+        if isinstance(text_data, str) and os.path.isfile(text_data):
+            with open(text_data, 'r', encoding='utf-8') as f:
+                text_data = f.read()
+        
+        # Initialiser le tokenizer
+        if tokenizer is None:
+            from transformers import GPT2Tokenizer
+            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+            # Ajout de token spécial si nécessaire pour GPT2
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        else:
+            self.tokenizer = tokenizer
+        
+        # Tokenize le texte
+        self.encodings = self.tokenizer(text_data, return_tensors='pt', truncation=True)
+        self.input_ids = self.encodings.input_ids[0]
+        
+        # Stocker les exemples sous forme de liste pour __len__
         self.examples = []
-        for i in range(0, len(self.tokenized_text) - block_size, block_size):
-            self.examples.append(self.tokenized_text[i:i + block_size + 1])  # +1 to include target token
+        for i in range(0, len(self.input_ids) - block_size + 1, 1):  # Step par 1 pour maximiser le nombre de séquences
+            self.examples.append((
+                self.input_ids[i:i+block_size],
+                self.input_ids[i+1:i+block_size+1]
+            ))
+        
+        # Stocker la taille du vocabulaire
+        self.vocab_size = len(self.tokenizer)
     
     def __len__(self):
         return len(self.examples)
     
     def __getitem__(self, idx):
-        # Get sequence of tokens
-        tokens = self.examples[idx]
-        x = tokens[:-1]  # Input sequence
-        y = tokens[1:]   # Output sequence (shifted by 1)
-        
-        # Convert to tensors
-        input_ids = torch.tensor(x, dtype=torch.long)
-        labels = torch.tensor(y, dtype=torch.long)
-        
-        # Return dictionary format for compatibility with TransformerTrainer
-        return {
-            "input_ids": input_ids,
-            "labels": labels,
-            "attention_mask": torch.ones_like(input_ids)  # All tokens are attended to
-        }
+        inputs, targets = self.examples[idx]
+        return inputs, targets
 
 def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokenizer=None, block_size=128):
     """
@@ -393,7 +384,7 @@ def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokeni
     
     # Create dataset
     transformer_dataset = TransformerTextDataset(
-        text_path=source,
+        text_data=source,
         tokenizer=tokenizer,
         block_size=block_size
     )
@@ -415,20 +406,43 @@ def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokeni
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=0
+        num_workers=0,
+        collate_fn=transformer_collate_fn  # Ajouter cette ligne
     )
     
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0
+        num_workers=0,
+        collate_fn=transformer_collate_fn  # Ajouter cette ligne
     )
     
     return train_loader, val_loader
 
 def transformer_collate_fn(batch):
-    """Fonction de collate personnalisée pour les batches Transformer"""
-    input_ids = torch.stack([item["input_ids"] for item in batch])
-    labels = torch.stack([item["labels"] for item in batch])
-    return {"input_ids": input_ids, "labels": labels}
+    """Collate function pour Transformer qui aligne les séquences à la même longueur"""
+    
+    # Séparer les entrées et les cibles
+    inputs, targets = zip(*batch)
+    
+    # Trouver la longueur maximale dans ce batch
+    max_len = max(inp.size(0) for inp in inputs)
+    
+    # Fonction pour padder un tensor
+    def pad_tensor(x, length):
+        # Créer un nouveau tensor avec la longueur cible
+        pad_size = length - x.size(0)
+        if pad_size <= 0:
+            return x
+            
+        # Le padding token est généralement 0 dans la plupart des tokenizers
+        padding = torch.zeros(pad_size, dtype=x.dtype, device=x.device)
+        padded = torch.cat([x, padding], dim=0)
+        return padded
+    
+    # Padder tous les inputs et targets
+    padded_inputs = torch.stack([pad_tensor(inp, max_len) for inp in inputs])
+    padded_targets = torch.stack([pad_tensor(tgt, max_len) for tgt in targets])
+    
+    return padded_inputs, padded_targets

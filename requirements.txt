@@ -19,3 +19,4 @@ Pillow
 PyYAML
 jupyter
 torchvision
+datasets

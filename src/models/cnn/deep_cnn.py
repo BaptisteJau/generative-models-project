@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, models, optimizers
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 class DeepCNN:
     def __init__(self, input_shape=(64, 64, 3), latent_dim=100):
@@ -105,63 +106,72 @@ class DeepCNN:
         
         return combined
     
-    def train(self, dataset, epochs=10000, batch_size=32, save_interval=100):
-        """Train the GAN using the provided dataset
+    def train(self, train_loader, epochs=100, log_interval=10, plot_interval=100):
+        """Train the GAN model"""
+        # Array pour stocker l'historique de l'entraînement
+        history = {"d_loss": [], "g_loss": []}
         
-        Args:
-            dataset: Dataset of real images (should return batches of normalized images in [-1, 1])
-            epochs: Number of training epochs
-            batch_size: Batch size
-            save_interval: Interval for saving sample images during training
-        """
-        # Create labels for real and fake images
+        batch_size = train_loader.batch_size
         real = np.ones((batch_size, 1))
         fake = np.zeros((batch_size, 1))
         
-        history = {"d_loss": [], "d_acc": [], "g_loss": []}
-        
         for epoch in range(epochs):
-            # -----------------
-            # Train Discriminator
-            # -----------------
-            
-            # Get batch of real images
-            imgs = next(iter(dataset))
-            
-            # Generate batch of fake images
-            noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-            gen_imgs = self.generator.predict(noise)
-            
-            # Train discriminator
-            d_loss_real = self.discriminator.train_on_batch(imgs, real)
-            d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
-            d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-            
-            # -----------------
-            # Train Generator
-            # -----------------
-            
-            # Generate new noise vectors
-            noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-            
-            # Train generator (wants discriminator to mistake images as real)
-            g_loss = self.combined.train_on_batch(noise, real)
-            
-            # Save losses and accuracies
-            history["d_loss"].append(d_loss[0])
-            history["d_acc"].append(d_loss[1])
-            history["g_loss"].append(g_loss)
-            
-            # Print progress
-            if epoch % 100 == 0:
-                print(f"Epoch {epoch}/{epochs} [D loss: {d_loss[0]:.4f}, acc: {100*d_loss[1]:.2f}%] [G loss: {g_loss:.4f}]")
-            
-            # Save sample images
-            if epoch % save_interval == 0:
-                self.save_sample_images(epoch)
-        
-        return history
+            for i, batch in enumerate(train_loader):
+                # Gérer les deux types de retour possibles du dataloader
+                if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+                    imgs, _ = batch  # Loader retourne (images, labels)
+                else:
+                    imgs = batch  # Loader retourne uniquement les images
                 
+                # Conversion des données PyTorch au format Keras
+                if isinstance(imgs, torch.Tensor):
+                    # Convertir PyTorch tensor -> Numpy
+                    imgs = imgs.detach().cpu().numpy()
+                    
+                    # Vérifier et modifier l'ordre des dimensions si nécessaire
+                    if imgs.shape[1] in [1, 3]:  # Format NCHW (channels en 2e position)
+                        imgs = np.transpose(imgs, (0, 2, 3, 1))
+                        print(f"Images converties de NCHW -> NHWC: {imgs.shape}")
+                    
+                    # Normaliser si nécessaire pour tanh (-1 à 1)
+                    if imgs.min() >= 0 and imgs.max() <= 1:
+                        imgs = imgs * 2 - 1
+                
+                # Utiliser directement ces images converties avec TensorFlow
+                imgs = tf.convert_to_tensor(imgs, dtype=tf.float32)
+                print(f"Forme finale des images: {imgs.shape}")
+                
+                # Générer du bruit aléatoire
+                noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                
+                # Générer des images fausses
+                gen_imgs = self.generator.predict(noise, verbose=0)
+                
+                # Entraîner le discriminateur
+                d_loss_real = self.discriminator.train_on_batch(imgs, real)
+                d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
+                d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+                
+                # Entraîner le générateur
+                noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                g_loss = self.combined.train_on_batch(noise, real)
+                
+                # Enregistrer les pertes
+                history["d_loss"].append(d_loss[0])
+                history["g_loss"].append(g_loss)
+                
+                # Afficher les progrès
+                if i % log_interval == 0:
+                    print(f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(train_loader)}] "
+                          f"[D loss: {d_loss[0]:.4f}, acc.: {100*d_loss[1]:.2f}%] "
+                          f"[G loss: {g_loss:.4f}]")
+                
+                # Générer et sauvegarder des images à certains intervalles
+                if i % plot_interval == 0:
+                    self.save_sample_images(epoch)
+                    
+        return history
+    
     def generate_images(self, num_images=1):
         """Generate new images from random noise
         

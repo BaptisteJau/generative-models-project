@@ -24,8 +24,52 @@ class BaseTrainer:
         raise NotImplementedError("Subclass must implement abstract method")
     
     def validate(self):
-        """Méthode à implémenter dans les classes dérivées"""
-        raise NotImplementedError("Subclass must implement abstract method")
+        """Valider le modèle Transformer"""
+        self.model.eval()
+        val_loss = 0.0
+        num_batches = 0
+        
+        with torch.no_grad():
+            for batch in self.val_loader:
+                # Extraire input_ids et labels
+                if isinstance(batch, dict):
+                    input_ids = batch["input_ids"].to(self.device)
+                    labels = batch["labels"].to(self.device)
+                    attention_mask = batch.get("attention_mask", None)
+                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
+                    # Format tuple (inputs, targets)
+                    input_ids = batch[0].to(self.device)
+                    labels = batch[1].to(self.device)
+                    attention_mask = None
+                else:
+                    raise ValueError("Transformer validation requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
+                
+                # Forward pass
+                outputs = self.model(input_ids, attention_mask=attention_mask)
+                
+                # Traitement similaire à la méthode train()
+                if hasattr(outputs, 'logits'):
+                    logits = outputs.logits
+                elif isinstance(outputs, dict) and 'logits' in outputs:
+                    logits = outputs['logits']
+                else:
+                    logits = outputs
+                
+                if logits.dim() > 2:
+                    logits = logits.reshape(-1, logits.size(-1))
+                    labels = labels.reshape(-1)
+                
+                # Calculer la perte
+                loss = self.criterion(logits, labels)
+                
+                val_loss += loss.item()
+                num_batches += 1
+        
+        # Moyenne de perte pour cette validation
+        avg_val_loss = val_loss / num_batches
+        perplexity = torch.exp(torch.tensor(avg_val_loss)).item()
+        
+        return avg_val_loss, perplexity
     
     def save_model(self, epoch):
         """Sauvegarde du modèle"""
@@ -52,11 +96,25 @@ class GANTrainer(BaseTrainer):
         # Pour TensorFlow DeepCNN
         if hasattr(self.model, 'train'):
             # Le modèle DeepCNN a sa propre méthode train
-            return self.model.train(self.train_loader, 
-                                   epochs=self.epochs,
-                                   batch_size=self.batch_size,
-                                   save_interval=self.save_interval)
-        
+            # Vérifions quels paramètres sont acceptés par la méthode train du modèle
+            import inspect
+            train_params = inspect.signature(self.model.train).parameters
+            
+            # Construisons un dictionnaire avec seulement les paramètres supportés
+            args = {'train_loader': self.train_loader}
+            
+            if 'epochs' in train_params:
+                args['epochs'] = self.epochs
+            
+            if 'log_interval' in train_params:
+                args['log_interval'] = self.config.get('log_interval', 10)
+            
+            if 'plot_interval' in train_params:
+                args['plot_interval'] = self.config.get('save_interval', 100)
+                
+            # Appeler la méthode train avec les bons arguments
+            return self.model.train(**args)
+            
         # Pour PyTorch GAN
         else:
             # Labels pour images réelles (1) et fausses (0)
@@ -354,21 +412,40 @@ class TransformerTrainer(BaseTrainer):
                 if isinstance(batch, dict):
                     input_ids = batch["input_ids"].to(self.device)
                     labels = batch["labels"].to(self.device)
-                    attention_mask = batch.get("attention_mask", None)
+                    # Ignorer attention_mask car notre modèle ne le supporte pas
+                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
+                    input_ids = batch[0].to(self.device)
+                    labels = batch[1].to(self.device)
                 else:
-                    raise ValueError("Transformer training requires batches in dictionary format with 'input_ids' and 'labels' keys")
+                    raise ValueError("Transformer training requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
                 
-                # Forward pass
-                outputs = self.model(input_ids, attention_mask)
+                # Forward pass - utiliser seulement les input_ids
+                try:
+                    # Essayer avec la signature qui semble correspondre à votre modèle
+                    outputs = self.model(input_ids, trg=labels)
+                except TypeError as e:
+                    try:
+                        # Essayer d'autres signatures communes
+                        outputs = self.model(input_ids, labels)
+                    except TypeError:
+                        # Si tout échoue, afficher un message d'erreur utile
+                        raise TypeError(f"Impossible d'appeler le modèle Transformer. Vérifiez les arguments attendus par la méthode forward(): {e}")
                 
                 # Reformatter si nécessaire pour calculer la perte
-                if outputs.dim() > 2:
+                if hasattr(outputs, 'logits'):
+                    # Pour les modèles HuggingFace
+                    logits = outputs.logits
+                elif isinstance(outputs, dict) and 'logits' in outputs:
+                    logits = outputs['logits']
+                else:
+                    # Pour des sorties standard (batch_size, seq_len, vocab_size)
+                    logits = outputs
+                
+                if logits.dim() > 2:
                     # [batch_size, seq_len, vocab_size] -> [batch_size * seq_len, vocab_size]
-                    logits = outputs.reshape(-1, outputs.size(-1))
+                    logits = logits.reshape(-1, logits.size(-1))
                     # [batch_size, seq_len] -> [batch_size * seq_len]
                     labels = labels.reshape(-1)
-                else:
-                    logits = outputs
                 
                 # Calculer la perte
                 loss = self.criterion(logits, labels)
@@ -419,19 +496,37 @@ class TransformerTrainer(BaseTrainer):
                 if isinstance(batch, dict):
                     input_ids = batch["input_ids"].to(self.device)
                     labels = batch["labels"].to(self.device)
-                    attention_mask = batch.get("attention_mask", None)
+                    # Ignorer attention_mask car notre modèle ne le supporte pas
+                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
+                    # Format tuple (inputs, targets)
+                    input_ids = batch[0].to(self.device)
+                    labels = batch[1].to(self.device)
                 else:
-                    raise ValueError("Transformer validation requires batches in dictionary format with 'input_ids' and 'labels' keys")
+                    raise ValueError("Transformer validation requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
                 
-                # Forward pass
-                outputs = self.model(input_ids, attention_mask)
+                # Forward pass - utiliser la même méthode que dans train()
+                try:
+                    # Essayer avec la signature qui correspond à votre modèle
+                    outputs = self.model(input_ids, trg=labels)
+                except TypeError as e:
+                    try:
+                        # Essayer d'autres signatures communes
+                        outputs = self.model(input_ids, labels)
+                    except TypeError:
+                        # Si tout échoue, afficher un message d'erreur utile
+                        raise TypeError(f"Impossible d'appeler le modèle Transformer. Vérifiez les arguments attendus par la méthode forward(): {e}")
                 
                 # Reformatter si nécessaire pour calculer la perte
-                if outputs.dim() > 2:
-                    logits = outputs.reshape(-1, outputs.size(-1))
-                    labels = labels.reshape(-1)
+                if hasattr(outputs, 'logits'):
+                    logits = outputs.logits
+                elif isinstance(outputs, dict) and 'logits' in outputs:
+                    logits = outputs['logits']
                 else:
                     logits = outputs
+                
+                if logits.dim() > 2:
+                    logits = logits.reshape(-1, logits.size(-1))
+                    labels = labels.reshape(-1)
                 
                 # Calculer la perte
                 loss = self.criterion(logits, labels)
@@ -462,30 +557,80 @@ class TransformerTrainer(BaseTrainer):
             
             sample_file = os.path.join(self.save_dir, f"text_samples_epoch_{epoch+1}.txt")
             
+            # Inspecter les paramètres attendus par la méthode generate
+            import inspect
+            generate_params = inspect.signature(self.model.generate).parameters
+            
             with open(sample_file, 'w', encoding='utf-8') as f:
                 for prompt in prompts:
-                    # Tokeniser le prompt
-                    if hasattr(self.model, 'tokenizer'):
-                        tokenizer = self.model.tokenizer
-                    else:
-                        from transformers import AutoTokenizer
-                        tokenizer = AutoTokenizer.from_pretrained('gpt2')
+                    try:
+                        # Tokeniser le prompt
+                        if hasattr(self.model, 'tokenizer'):
+                            tokenizer = self.model.tokenizer
+                        else:
+                            from transformers import AutoTokenizer
+                            tokenizer = AutoTokenizer.from_pretrained('gpt2')
+                        
+                        input_ids = tokenizer(prompt, return_tensors='pt')['input_ids'].to(self.device)
+                        
+                        # Générer du texte avec les bons paramètres
+                        with torch.no_grad():
+                            # Utiliser les paramètres appropriés selon l'inspection
+                            kwargs = {}
+                            
+                            # Gérer différentes possibilités pour le paramètre de longueur
+                            if 'max_length' in generate_params:
+                                kwargs['max_length'] = 100
+                            elif 'max_new_tokens' in generate_params:
+                                kwargs['max_new_tokens'] = 100
+                            elif 'length' in generate_params:
+                                kwargs['length'] = 100
+                            
+                            # Si la méthode accepte temperature
+                            if 'temperature' in generate_params:
+                                kwargs['temperature'] = 0.8
+                                
+                            # Si la méthode accepte des input_ids
+                            if 'input_ids' in generate_params:
+                                output = self.model.generate(input_ids=input_ids, **kwargs)
+                            else:
+                                # Sinon, passer directement le prompt
+                                output = self.model.generate(prompt, **kwargs)
+                        
+                        # Décoder et écrire le texte généré
+                        if isinstance(output, torch.Tensor):
+                            if hasattr(self.model, 'tokenizer'):
+                                generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+                            else:
+                                generated_text = f"[Tensor output not decodable: {output.shape}]"
+                        else:
+                            # Si le modèle renvoie déjà du texte
+                            generated_text = output
+                        
+                        f.write(f"Prompt: {prompt}\n")
+                        f.write(f"Generated: {generated_text}\n\n")
                     
-                    input_ids = tokenizer(prompt, return_tensors='pt')['input_ids'].to(self.device)
-                    
-                    # Générer du texte
-                    with torch.no_grad():
-                        output = self.model.generate(
-                            input_ids=input_ids,
-                            max_length=100,
-                            num_return_sequences=1,
-                            temperature=0.8
-                        )
-                    
-                    # Décoder et écrire le texte généré
-                    generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-                    f.write(f"Prompt: {prompt}\n")
-                    f.write(f"Generated: {generated_text}\n\n")
+                    except Exception as e:
+                        f.write(f"Prompt: {prompt}\n")
+                        f.write(f"Error generating text: {str(e)}\n\n")
+                        print(f"Error generating text for prompt '{prompt}': {str(e)}")
+
+
+class CNNTrainer(BaseTrainer):
+    def train(self):
+        """Train the CNN model (GAN)"""
+        # Obtenir les paramètres d'entraînement du config
+        epochs = self.config.get('epochs', 100)
+        log_interval = self.config.get('log_interval', 10)
+        plot_interval = self.config.get('plot_interval', 100)
+        
+        # Appeler la méthode train du modèle sans passer batch_size
+        return self.model.train(
+            self.train_loader,
+            epochs=epochs,
+            log_interval=log_interval,
+            plot_interval=plot_interval
+        )
 
 
 # Fonction factory pour créer le bon trainer selon le type de modèle
