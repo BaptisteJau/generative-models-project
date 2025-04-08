@@ -3,6 +3,12 @@ from tensorflow.keras import layers, models, optimizers
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from src.utils.framework_utils import FrameworkBridge
+import logging
+
+# Configuration du logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class DeepCNN:
     def __init__(self, input_shape=(64, 64, 3), latent_dim=100):
@@ -106,8 +112,13 @@ class DeepCNN:
         
         return combined
     
-    def train(self, train_loader, epochs=100, log_interval=10, plot_interval=100):
+    def train(self, train_loader, epochs=100, log_interval=10, plot_interval=100, save_interval=10):
         """Train the GAN model"""
+        # Ajouter au début de la méthode train
+        if train_loader is None or len(train_loader) == 0:
+            logger.warning("Dataloader vide, entraînement impossible")
+            return {"d_loss": [], "g_loss": []}
+        
         # Array pour stocker l'historique de l'entraînement
         history = {"d_loss": [], "g_loss": []}
         
@@ -116,30 +127,45 @@ class DeepCNN:
         fake = np.zeros((batch_size, 1))
         
         for epoch in range(epochs):
+            d_losses_epoch = []
+            g_losses_epoch = []
             for i, batch in enumerate(train_loader):
                 # Gérer les deux types de retour possibles du dataloader
                 if isinstance(batch, (list, tuple)) and len(batch) >= 2:
                     imgs, _ = batch  # Loader retourne (images, labels)
                 else:
                     imgs = batch  # Loader retourne uniquement les images
-                
-                # Conversion des données PyTorch au format Keras
-                if isinstance(imgs, torch.Tensor):
-                    # Convertir PyTorch tensor -> Numpy
-                    imgs = imgs.detach().cpu().numpy()
+
+                # Conversion des données via FrameworkBridge amélioré
+                try:
+                    # 1. Conversion en tensor TensorFlow
+                    if FrameworkBridge.is_pytorch_tensor(imgs):
+                        logger.info("Détection d'un tensor PyTorch, conversion vers TensorFlow")
+                        imgs = FrameworkBridge.pytorch_to_tensorflow(imgs, normalize_range=(-1, 1))
+                    elif not FrameworkBridge.is_tensorflow_tensor(imgs):
+                        # Si ce n'est ni PyTorch ni TensorFlow, convertir via numpy
+                        logger.info(f"Détection d'un type non-tensor: {type(imgs)}, conversion via numpy")
+                        array = FrameworkBridge.to_numpy(imgs)
+                        imgs = tf.convert_to_tensor(array, dtype=tf.float32)
                     
-                    # Vérifier et modifier l'ordre des dimensions si nécessaire
-                    if imgs.shape[1] in [1, 3]:  # Format NCHW (channels en 2e position)
-                        imgs = np.transpose(imgs, (0, 2, 3, 1))
-                        print(f"Images converties de NCHW -> NHWC: {imgs.shape}")
+                    # 2. Normalisation de la forme du tensor
+                    imgs = FrameworkBridge.normalize_batch_shape(imgs, expected_format='NHWC')
                     
-                    # Normaliser si nécessaire pour tanh (-1 à 1)
-                    if imgs.min() >= 0 and imgs.max() <= 1:
-                        imgs = imgs * 2 - 1
+                    # 3. Vérification finale de compatibilité avec le modèle
+                    expected_shape = (None, self.input_shape[0], self.input_shape[1], self.input_shape[2])
+                    actual_shape = imgs.shape
+                    
+                    # Remplacer par une vérification plus flexible
+                    if len(actual_shape) != 4 or actual_shape[3] != expected_shape[3]:
+                        raise ValueError(f"Forme du tensor incompatible: attendu canaux={expected_shape[3]}, obtenu {actual_shape}")
+                    
+                    logger.debug(f"Images prêtes pour entraînement: {imgs.shape}")
+                    
+                except Exception as e:
+                    logger.error(f"Erreur lors de la conversion des données: {e}")
+                    raise
                 
-                # Utiliser directement ces images converties avec TensorFlow
-                imgs = tf.convert_to_tensor(imgs, dtype=tf.float32)
-                print(f"Forme finale des images: {imgs.shape}")
+                logger.debug(f"Images prêtes pour entraînement: {imgs.shape}")
                 
                 # Générer du bruit aléatoire
                 noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
@@ -159,16 +185,27 @@ class DeepCNN:
                 # Enregistrer les pertes
                 history["d_loss"].append(d_loss[0])
                 history["g_loss"].append(g_loss)
+                d_losses_epoch.append(d_loss[0])
+                g_losses_epoch.append(g_loss)
                 
                 # Afficher les progrès
                 if i % log_interval == 0:
-                    print(f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(train_loader)}] "
+                    logger.info(f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(train_loader)}] "
                           f"[D loss: {d_loss[0]:.4f}, acc.: {100*d_loss[1]:.2f}%] "
                           f"[G loss: {g_loss:.4f}]")
                 
                 # Générer et sauvegarder des images à certains intervalles
                 if i % plot_interval == 0:
                     self.save_sample_images(epoch)
+                    
+            # À la fin de chaque époque
+            avg_d_loss = sum(d_losses_epoch) / len(d_losses_epoch)
+            avg_g_loss = sum(g_losses_epoch) / len(g_losses_epoch)
+            logger.info(f"Epoch {epoch+1}/{epochs} - Avg D loss: {avg_d_loss:.4f}, Avg G loss: {avg_g_loss:.4f}")
+            
+            # Ajouter dans la boucle d'entraînement
+            if (epoch + 1) % save_interval == 0:
+                self.save_model(f"checkpoints/gan_checkpoint_epoch_{epoch+1}")
                     
         return history
     
@@ -198,6 +235,10 @@ class DeepCNN:
         Args:
             epoch: Current training epoch
         """
+        # Créer le dossier si nécessaire
+        import os
+        os.makedirs("images", exist_ok=True)
+    
         r, c = 4, 4  # Grid size
         noise = np.random.normal(0, 1, (r * c, self.latent_dim))
         gen_imgs = self.generator.predict(noise)
