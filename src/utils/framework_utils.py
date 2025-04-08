@@ -187,6 +187,56 @@ class FrameworkBridge:
         
         return tensor
 
+    # Améliorer les méthodes de détection de types de framework
+
+    @staticmethod
+    def is_pytorch_model(model):
+        """Vérifie si un modèle utilise PyTorch
+        
+        Args:
+            model: Instance d'un modèle à vérifier
+            
+        Returns:
+            bool: True si c'est un modèle PyTorch
+        """
+        # Vérifier la présence d'attributs caractéristiques de PyTorch
+        if hasattr(model, 'state_dict') and callable(getattr(model, 'state_dict')):
+            return True
+            
+        # Vérifier si le modèle a des paramètres torch.nn
+        if hasattr(model, 'parameters') and callable(getattr(model, 'parameters')):
+            try:
+                next(model.parameters())
+                return True
+            except (StopIteration, AttributeError, TypeError):
+                pass
+        
+        return False
+
+    @staticmethod
+    def is_tensorflow_model(model):
+        """Vérifie si un modèle utilise TensorFlow/Keras
+        
+        Args:
+            model: Instance d'un modèle à vérifier
+            
+        Returns:
+            bool: True si c'est un modèle TensorFlow/Keras
+        """
+        # Vérifier la présence d'attributs caractéristiques de TensorFlow/Keras
+        if hasattr(model, 'save') and callable(getattr(model, 'save')):
+            return True
+            
+        # Vérifier s'il s'agit d'un modèle composite avec composants TensorFlow
+        if hasattr(model, 'generator') and hasattr(model.generator, 'save'):
+            return True
+            
+        # Vérifier s'il contient des layers Keras
+        if hasattr(model, 'layers') or ('keras' in str(type(model)).lower()) or ('tensorflow' in str(type(model)).lower()):
+            return True
+            
+        return False
+
 # Fonction utilitaire pour vérifier la disponibilité des frameworks
 def get_available_frameworks():
     """Renvoie un dictionnaire indiquant quels frameworks sont disponibles"""
