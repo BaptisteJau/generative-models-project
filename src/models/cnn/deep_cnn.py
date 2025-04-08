@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 import torch
 from src.utils.framework_utils import FrameworkBridge
 import logging
+import os
+from datetime import datetime
 
-# Configuration du logger
-logging.basicConfig(level=logging.INFO)
+# Réduction de la verbosité des logs
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 class DeepCNN:
@@ -29,21 +31,25 @@ class DeepCNN:
         # Create combined model (generator + discriminator) for training the generator
         self.combined = self.build_combined_model()
         
+        # Pour suivi des métriques
+        self.metrics_history = {
+            'd_loss': [], 'd_acc': [], 
+            'g_loss': [], 
+            'epoch_d_loss': [], 'epoch_g_loss': [],
+            'epoch_d_acc': []
+        }
+        
     def build_generator(self):
-        """Build the generator network that transforms noise into images"""
+        """Build a lightweight generator network"""
         noise_shape = (self.latent_dim,)
         
-        model = models.Sequential(name="Generator")
+        model = models.Sequential(name="Generator_Lite")
         
-        # First dense layer
-        model.add(layers.Dense(4 * 4 * 256, input_shape=noise_shape))
-        model.add(layers.Reshape((4, 4, 256)))
+        # First dense layer - réduit de 256 à 128 filtres
+        model.add(layers.Dense(4 * 4 * 128, input_shape=noise_shape))
+        model.add(layers.Reshape((4, 4, 128)))
         
-        # Upsampling convolutional layers
-        model.add(layers.Conv2DTranspose(128, (5, 5), strides=(2, 2), padding='same'))
-        model.add(layers.BatchNormalization())
-        model.add(layers.LeakyReLU(alpha=0.2))
-        
+        # Couches de convolution transposées - 3 couches au lieu de 4
         model.add(layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same'))
         model.add(layers.BatchNormalization())
         model.add(layers.LeakyReLU(alpha=0.2))
@@ -52,43 +58,46 @@ class DeepCNN:
         model.add(layers.BatchNormalization())
         model.add(layers.LeakyReLU(alpha=0.2))
         
+        # Dernière couche de upsampling - correspond maintenant à 32x32 au lieu de 64x64
         model.add(layers.Conv2DTranspose(16, (5, 5), strides=(2, 2), padding='same'))
         model.add(layers.BatchNormalization())
         model.add(layers.LeakyReLU(alpha=0.2))
         
-        # Output layer with tanh activation for pixel values in [-1, 1]
+        # Output layer with tanh activation
         model.add(layers.Conv2D(self.input_shape[2], (3, 3), padding='same', activation='tanh'))
         
+        # S'assurer que toutes les couches sont bien trainable
+        for layer in model.layers:
+            layer.trainable = True
+            
         return model
         
     def build_discriminator(self):
-        """Build the discriminator network to classify real/fake images"""
-        model = models.Sequential(name="Discriminator")
+        """Build a lightweight discriminator network"""
+        model = models.Sequential(name="Discriminator_Lite")
         
-        # Convolutional layers
+        # Couches de convolution réduites - 3 couches au lieu de 4
         model.add(layers.Conv2D(32, (3, 3), strides=(2, 2), padding='same', 
                              input_shape=self.input_shape))
         model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
+        model.add(layers.Dropout(0.25))  # Réduit le dropout
         
         model.add(layers.Conv2D(64, (3, 3), strides=(2, 2), padding='same'))
         model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
+        model.add(layers.Dropout(0.25))
         
         model.add(layers.Conv2D(128, (3, 3), strides=(2, 2), padding='same'))
         model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-        
-        model.add(layers.Conv2D(256, (3, 3), strides=(2, 2), padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
+        model.add(layers.Dropout(0.25))
         
         model.add(layers.Flatten())
-        
-        # Output layer for binary classification (real/fake)
         model.add(layers.Dense(1, activation='sigmoid'))
         
-        # Compile discriminator
+        # S'assurer que toutes les couches sont bien trainable
+        for layer in model.layers:
+            layer.trainable = True
+            
+        # Compile avec la même configuration
         model.compile(loss='binary_crossentropy',
                      optimizer=optimizers.Adam(learning_rate=0.0002, beta_1=0.5),
                      metrics=['accuracy'])
@@ -97,7 +106,7 @@ class DeepCNN:
         
     def build_combined_model(self):
         """Build combined model for training the generator"""
-        # For the combined model, we only train the generator
+        # Pour le modèle combiné, on fige temporairement le discriminateur
         self.discriminator.trainable = False
         
         # Create combined model (generator + discriminator)
@@ -112,65 +121,78 @@ class DeepCNN:
         
         return combined
     
-    def train(self, train_loader, epochs=100, log_interval=10, plot_interval=100, save_interval=10):
+    def preprocess_batch_data(self, batch_data):
+        """
+        Prétraiter en une seule fois les données du batch pour éviter les conversions répétitives
+        """
+        # Gérer les deux types de retour possibles du dataloader
+        if isinstance(batch_data, (list, tuple)) and len(batch_data) >= 2:
+            imgs = batch_data[0]  # Loader retourne (images, labels)
+        else:
+            imgs = batch_data  # Loader retourne uniquement les images
+        
+        # Conversion des données via FrameworkBridge amélioré
+        try:
+            # 1. Conversion en tensor TensorFlow
+            if FrameworkBridge.is_pytorch_tensor(imgs):
+                imgs = FrameworkBridge.pytorch_to_tensorflow(imgs, normalize_range=(-1, 1))
+            elif not FrameworkBridge.is_tensorflow_tensor(imgs):
+                # Si ce n'est ni PyTorch ni TensorFlow, convertir via numpy
+                array = FrameworkBridge.to_numpy(imgs)
+                imgs = tf.convert_to_tensor(array, dtype=tf.float32)
+            
+            # 2. Normalisation de la forme du tensor
+            imgs = FrameworkBridge.normalize_batch_shape(imgs, expected_format='NHWC')
+            
+            # 3. Vérification finale de compatibilité avec le modèle
+            expected_shape = (None, self.input_shape[0], self.input_shape[1], self.input_shape[2])
+            actual_shape = imgs.shape
+            
+            if len(actual_shape) != 4 or actual_shape[3] != expected_shape[3]:
+                raise ValueError(f"Forme du tensor incompatible: attendu {expected_shape}, obtenu {actual_shape}")
+            
+            return imgs
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la préparation des données: {e}")
+            raise
+    
+    def train(self, train_loader, epochs=20, log_interval=50, plot_interval=500, save_interval=5):
         """Train the GAN model"""
-        # Ajouter au début de la méthode train
+        # Vérifier le dataloader
         if train_loader is None or len(train_loader) == 0:
             logger.warning("Dataloader vide, entraînement impossible")
-            return {"d_loss": [], "g_loss": []}
+            return self.metrics_history
         
-        # Array pour stocker l'historique de l'entraînement
-        history = {"d_loss": [], "g_loss": []}
+        # Créer un optimiseur dédié pour le générateur 
+        # (puisque nous n'utilisons pas celui du modèle combiné avec GradientTape)
+        generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5)
         
-        batch_size = train_loader.batch_size
-        real = np.ones((batch_size, 1))
-        fake = np.zeros((batch_size, 1))
+        # Répertoire pour les checkpoints
+        checkpoint_dir = os.path.join("checkpoints", f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        os.makedirs(checkpoint_dir, exist_ok=True)
         
         for epoch in range(epochs):
             d_losses_epoch = []
             g_losses_epoch = []
+            d_accs_epoch = []
+            
             for i, batch in enumerate(train_loader):
-                # Gérer les deux types de retour possibles du dataloader
-                if isinstance(batch, (list, tuple)) and len(batch) >= 2:
-                    imgs, _ = batch  # Loader retourne (images, labels)
-                else:
-                    imgs = batch  # Loader retourne uniquement les images
-
-                # Conversion des données via FrameworkBridge amélioré
-                try:
-                    # 1. Conversion en tensor TensorFlow
-                    if FrameworkBridge.is_pytorch_tensor(imgs):
-                        logger.info("Détection d'un tensor PyTorch, conversion vers TensorFlow")
-                        imgs = FrameworkBridge.pytorch_to_tensorflow(imgs, normalize_range=(-1, 1))
-                    elif not FrameworkBridge.is_tensorflow_tensor(imgs):
-                        # Si ce n'est ni PyTorch ni TensorFlow, convertir via numpy
-                        logger.info(f"Détection d'un type non-tensor: {type(imgs)}, conversion via numpy")
-                        array = FrameworkBridge.to_numpy(imgs)
-                        imgs = tf.convert_to_tensor(array, dtype=tf.float32)
-                    
-                    # 2. Normalisation de la forme du tensor
-                    imgs = FrameworkBridge.normalize_batch_shape(imgs, expected_format='NHWC')
-                    
-                    # 3. Vérification finale de compatibilité avec le modèle
-                    expected_shape = (None, self.input_shape[0], self.input_shape[1], self.input_shape[2])
-                    actual_shape = imgs.shape
-                    
-                    # Remplacer par une vérification plus flexible
-                    if len(actual_shape) != 4 or actual_shape[3] != expected_shape[3]:
-                        raise ValueError(f"Forme du tensor incompatible: attendu canaux={expected_shape[3]}, obtenu {actual_shape}")
-                    
-                    logger.debug(f"Images prêtes pour entraînement: {imgs.shape}")
-                    
-                except Exception as e:
-                    logger.error(f"Erreur lors de la conversion des données: {e}")
-                    raise
+                # Prétraitement des données une seule fois
+                imgs = self.preprocess_batch_data(batch)
+                current_batch_size = imgs.shape[0]
                 
-                logger.debug(f"Images prêtes pour entraînement: {imgs.shape}")
+                # Créer les labels pour ce batch
+                real = np.ones((current_batch_size, 1))
+                fake = np.zeros((current_batch_size, 1))
                 
-                # Générer du bruit aléatoire
-                noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                # ----------------------
+                # IMPORTANT: S'assurer que le discriminateur est trainable
+                # ----------------------
+                self.discriminator.trainable = True
                 
                 # Générer des images fausses
+                noise = np.random.normal(0, 1, (current_batch_size, self.latent_dim))
                 gen_imgs = self.generator.predict(noise, verbose=0)
                 
                 # Entraîner le discriminateur
@@ -178,36 +200,88 @@ class DeepCNN:
                 d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
                 d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                 
-                # Entraîner le générateur
-                noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                # ----------------------
+                # Entraîner le générateur SOIT avec le modèle combiné SOIT avec GradientTape
+                # MAIS pas les deux (ce qui cause des conflits)
+                # ----------------------
+                
+                # OPTION 1: Utiliser le modèle combiné (plus simple)
+                noise = np.random.normal(0, 1, (current_batch_size, self.latent_dim))
                 g_loss = self.combined.train_on_batch(noise, real)
                 
+                # OPTION 2: Utiliser GradientTape (nous commentons cette partie)
+                """
+                # Figer le discriminateur pour l'entraînement du générateur
+                self.discriminator.trainable = False
+                
+                # Générer du bruit frais pour le générateur
+                noise = np.random.normal(0, 1, (current_batch_size, self.latent_dim))
+                
+                # Utiliser TensorFlow GradientTape pour un meilleur suivi des gradients
+                with tf.GradientTape() as tape:
+                    gen_imgs = self.generator(noise, training=True)
+                    fake_outputs = self.discriminator(gen_imgs, training=False)
+                    g_loss = tf.keras.losses.binary_crossentropy(real, fake_outputs)
+                
+                # Calculer et appliquer les gradients manuellement
+                grads = tape.gradient(g_loss, self.generator.trainable_weights)
+                generator_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+                
+                g_loss = tf.reduce_mean(g_loss).numpy()
+                """
+                
                 # Enregistrer les pertes
-                history["d_loss"].append(d_loss[0])
-                history["g_loss"].append(g_loss)
+                self.metrics_history["d_loss"].append(d_loss[0])
+                self.metrics_history["d_acc"].append(d_loss[1])
+                self.metrics_history["g_loss"].append(g_loss)
+                
                 d_losses_epoch.append(d_loss[0])
+                d_accs_epoch.append(d_loss[1])
                 g_losses_epoch.append(g_loss)
                 
-                # Afficher les progrès
+                # Vérifier l'équilibre GAN
                 if i % log_interval == 0:
-                    logger.info(f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(train_loader)}] "
+                    gan_balance = d_loss[0] / (g_loss + 1e-8)  # éviter division par zéro
+                    balance_status = "équilibré" if 0.5 <= gan_balance <= 2 else "déséquilibré"
+                    
+                    logger.warning(f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(train_loader)}] "
                           f"[D loss: {d_loss[0]:.4f}, acc.: {100*d_loss[1]:.2f}%] "
-                          f"[G loss: {g_loss:.4f}]")
+                          f"[G loss: {g_loss:.4f}] [Balance GAN: {balance_status}]")
                 
                 # Générer et sauvegarder des images à certains intervalles
                 if i % plot_interval == 0:
                     self.save_sample_images(epoch)
-                    
-            # À la fin de chaque époque
-            avg_d_loss = sum(d_losses_epoch) / len(d_losses_epoch)
-            avg_g_loss = sum(g_losses_epoch) / len(g_losses_epoch)
-            logger.info(f"Epoch {epoch+1}/{epochs} - Avg D loss: {avg_d_loss:.4f}, Avg G loss: {avg_g_loss:.4f}")
             
-            # Ajouter dans la boucle d'entraînement
+            # À la fin de chaque époque
+            avg_d_loss = sum(d_losses_epoch) / len(d_losses_epoch) if d_losses_epoch else 0
+            avg_g_loss = sum(g_losses_epoch) / len(g_losses_epoch) if g_losses_epoch else 0
+            avg_d_acc = sum(d_accs_epoch) / len(d_accs_epoch) if d_accs_epoch else 0
+            
+            self.metrics_history["epoch_d_loss"].append(avg_d_loss)
+            self.metrics_history["epoch_g_loss"].append(avg_g_loss)
+            self.metrics_history["epoch_d_acc"].append(avg_d_acc)
+            
+            logger.warning(f"Epoch {epoch+1}/{epochs} - "
+                  f"Avg D loss: {avg_d_loss:.4f}, Avg D acc: {100*avg_d_acc:.2f}%, "
+                  f"Avg G loss: {avg_g_loss:.4f}")
+            
+            # Vérification de l'apprentissage
+            if epoch > 0:
+                d_progress = self.metrics_history["epoch_d_loss"][-2] - avg_d_loss
+                g_progress = self.metrics_history["epoch_g_loss"][-2] - avg_g_loss
+                
+                if abs(d_progress) < 0.001 and abs(g_progress) < 0.001:
+                    logger.warning("Attention: L'apprentissage semble stagner!")
+            
+            # Sauvegarder le modèle périodiquement
             if (epoch + 1) % save_interval == 0:
-                self.save_model(f"checkpoints/gan_checkpoint_epoch_{epoch+1}")
+                checkpoint_path = os.path.join(checkpoint_dir, f"gan_checkpoint_epoch_{epoch+1}")
+                self.save_model(checkpoint_path)
                     
-        return history
+        # Enregistrer le modèle final
+        final_path = os.path.join(checkpoint_dir, "gan_model_final")
+        self.save_model(final_path)
+        return self.metrics_history
     
     def generate_images(self, num_images=1):
         """Generate new images from random noise
@@ -236,7 +310,6 @@ class DeepCNN:
             epoch: Current training epoch
         """
         # Créer le dossier si nécessaire
-        import os
         os.makedirs("images", exist_ok=True)
     
         r, c = 4, 4  # Grid size
@@ -258,13 +331,32 @@ class DeepCNN:
         plt.close()
     
     def save_model(self, filepath):
-        """Save the generator and discriminator models
+        """Sauvegarde les modèles générateur et discriminateur
         
         Args:
-            filepath: Base filepath for saving models
+            filepath: Chemin de base pour la sauvegarde des modèles
         """
-        self.generator.save(f"{filepath}_generator.h5")
-        self.discriminator.save(f"{filepath}_discriminator.h5")
+        # Créer le répertoire parent si nécessaire
+        import os
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
+        
+        # Utiliser le format moderne .keras si disponible
+        try:
+            # Tester si la méthode moderne de sauvegarde est disponible
+            generator_path = f"{filepath}_generator.keras"
+            discriminator_path = f"{filepath}_discriminator.keras"
+            self.generator.save(generator_path)
+            self.discriminator.save(discriminator_path)
+            logger.info(f"Modèles sauvegardés au format .keras: {generator_path}, {discriminator_path}")
+        except (ValueError, ImportError):
+            # Fallback sur le format h5 legacy
+            generator_path = f"{filepath}_generator.h5"
+            discriminator_path = f"{filepath}_discriminator.h5"
+            self.generator.save(generator_path)
+            self.discriminator.save(discriminator_path)
+            logger.info(f"Modèles sauvegardés au format .h5: {generator_path}, {discriminator_path}")
+            
+        return filepath
         
     def load_model(self, filepath):
         """Load generator and discriminator models

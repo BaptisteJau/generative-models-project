@@ -219,7 +219,28 @@ def load_data(config):
     else:
         raise ValueError(f"Data type {data_type} not supported. Choose from 'image', 'text'.")
 
-def get_gan_data_loader(source, batch_size=32, image_size=64):
+def preconvert_dataset_to_tensorflow(dataset, batch_size=32, normalize_range=(-1, 1)):
+    """Convertit tout le dataset en tensors TensorFlow à l'avance"""
+    from src.utils.framework_utils import FrameworkBridge
+    import tensorflow as tf
+    
+    converted_data = []
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    
+    for batch in dataloader:
+        if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+            imgs, _ = batch
+        else:
+            imgs = batch
+        
+        # Conversion en batch
+        tf_imgs = FrameworkBridge.pytorch_to_tensorflow(imgs, normalize_range=normalize_range)
+        converted_data.append(tf_imgs)
+    
+    # Combiner tous les batches en un seul dataset TensorFlow
+    return tf.data.Dataset.from_tensor_slices(converted_data).batch(batch_size)
+
+def get_gan_data_loader(source, batch_size=32, image_size=64, preconvert=False):
     """
     Chargeur de données spécialement conçu pour les GAN (CNN génératif).
     Renvoie seulement des images sans étiquettes.
@@ -228,6 +249,7 @@ def get_gan_data_loader(source, batch_size=32, image_size=64):
         source: Nom du dataset ou chemin vers les images
         batch_size: Taille du batch
         image_size: Taille des images (carrées)
+        preconvert: Convertir à l'avance en tensors TensorFlow
     
     Returns:
         DataLoader pour entraînement GAN
@@ -251,9 +273,11 @@ def get_gan_data_loader(source, batch_size=32, image_size=64):
         # Utiliser un dataset personnalisé avec dossier d'images
         dataset = ImageOnlyDataset(source, transform=transform)
     
-    # Créer le DataLoader
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    return data_loader
+    # Ajouter l'option de préconversion
+    if preconvert:
+        return preconvert_dataset_to_tensorflow(dataset, batch_size)
+    else:
+        return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
 class ImageOnlyDataset(Dataset):
     """Dataset qui charge uniquement des images sans étiquettes, adapté pour les GANs"""

@@ -1,5 +1,3 @@
-# Nouveau fichier pour centraliser la configuration des loggers
-
 import logging
 import os
 

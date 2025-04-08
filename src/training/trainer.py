@@ -6,6 +6,13 @@ import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import torchvision.utils as vutils
+import logging
+import os
+from datetime import datetime
+from src.utils.logging_config import configure_logging
+
+# Configurer le logger pour ce module
+logger = logging.getLogger(__name__)
 
 class BaseTrainer:
     """Classe de base pour tous les trainers"""
@@ -246,6 +253,31 @@ class GANTrainer(BaseTrainer):
             plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
             plt.savefig(image_path)
             plt.close()
+    
+    def save_model(self, epoch):
+        """Sauvegarde les modèles à un point donné de l'entraînement"""
+        # Create checkpoint directory if it doesn't exist
+        checkpoint_dir = os.path.join(self.save_dir, "checkpoints")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        
+        # Générer nom de fichier
+        checkpoint_path = os.path.join(checkpoint_dir, f"gan_checkpoint_epoch_{epoch+1}")
+        
+        # Détecter si le modèle a sa propre méthode de sauvegarde
+        if hasattr(self.model, 'save_model') and callable(getattr(self.model, 'save_model')):
+            self.model.save_model(checkpoint_path)
+            logger.info(f"Checkpoint GAN sauvegardé à l'epoch {epoch+1}")
+        else:
+            # Si c'est un modèle PyTorch standard
+            gen_path = f"{checkpoint_path}_generator.pt"
+            disc_path = f"{checkpoint_path}_discriminator.pt"
+            
+            try:
+                torch.save(self.model.generator.state_dict(), gen_path)
+                torch.save(self.model.discriminator.state_dict(), disc_path)
+                logger.info(f"Checkpoint GAN PyTorch sauvegardé à l'epoch {epoch+1}")
+            except AttributeError:
+                logger.warning(f"Impossible de sauvegarder le checkpoint à l'epoch {epoch+1}")
 
 
 class DiffusionTrainer(BaseTrainer):
