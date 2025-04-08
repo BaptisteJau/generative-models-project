@@ -1,0 +1,77 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>GAN Evaluation Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .section { margin: 20px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }
+                .metric { font-weight: bold; }
+                img { max-width: 100%; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+            </style>
+        </head>
+        <body>
+            <h1>GAN Evaluation Report</h1>
+            <p>Generated on: 2025-04-08 22:57:59</p>
+            
+            <div class="section">
+                <h2>Quantitative Metrics</h2>
+                <table>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+        
+                    <tr>
+                        <td>fid</td>
+                        <td>354.9956</td>
+                    </tr>
+                
+                    <tr>
+                        <td>diversity_score</td>
+                        <td>1.5752</td>
+                    </tr>
+                
+                </table>
+            </div>
+            
+            <div class="section">
+                <h2>Generated Samples</h2>
+                <img src="samples/generated_samples.png" alt="Generated Samples">
+            </div>
+            
+            <div class="section">
+                <h2>Real vs Generated Comparison</h2>
+                <img src="real_vs_generated.png" alt="Real vs Generated">
+            </div>
+            
+            <div class="section">
+                <h2>Learning Curves</h2>
+                <img src="learning_curves/losses.png" alt="Learning Curves">
+                <img src="learning_curves/accuracy.png" alt="Discriminator Accuracy">
+                <img src="learning_curves/gan_balance.png" alt="GAN Balance">
+            </div>
+            
+            <div class="section">
+                <h2>Diversity Analysis</h2>
+                <img src="diversity_clusters.png" alt="Diversity Clusters">
+                <p>Diversity Score: <span class="metric">1.57519</span></p>
+            </div>
+            
+            <div class="section">
+                <h2>Quality Distribution</h2>
+                <img src="quality_distribution.png" alt="Quality Distribution">
+                <p>Mean Quality: <span class="metric">0.026 ± 0.013</span></p>
+                
+                <h3>Best Samples</h3>
+                <img src="best_samples.png" alt="Best Samples">
+                
+                <h3>Worst Samples</h3>
+                <img src="worst_samples.png" alt="Worst Samples">
+            </div>
+        </body>
+        </html>
+        
