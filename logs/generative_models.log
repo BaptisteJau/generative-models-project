@@ -14323,3 +14323,86 @@ Arguments received by Sequential.call():
 2025-04-08 23:18:34 - src.creative.latent_exploration - INFO - Animation sauvegardée: results/creative_exploration\interpolation.gif
 2025-04-08 23:18:34 - matplotlib.animation - INFO - Animation.save using <class 'matplotlib.animation.HTMLWriter'>
 2025-04-08 23:18:35 - root - INFO - Interpolation sauvegardée: results/creative_exploration\interpolation.gif
+2025-04-09 19:31:43 - src.training.trainer - INFO - Début de l'entraînement sur cuda
+2025-04-09 19:31:43 - src.training.trainer - INFO - Accumulation de gradients: 4 étapes
+2025-04-09 19:31:43 - src.training.trainer - INFO - Précision mixte: activée
+2025-04-09 19:37:27 - src.training.trainer - INFO - Début de l'entraînement sur cuda
+2025-04-09 19:37:27 - src.training.trainer - INFO - Accumulation de gradients: 4 étapes
+2025-04-09 19:37:27 - src.training.trainer - INFO - Précision mixte: activée
+2025-04-09 19:40:09 - root - INFO - Modèle PyTorch sauvegardé: results\transformer_20250409_193724\models\transformer_final.pt
+2025-04-09 19:51:19 - src.training.trainer - INFO - Début de l'entraînement sur cuda
+2025-04-09 19:51:19 - src.training.trainer - INFO - Accumulation de gradients: 4 étapes
+2025-04-09 19:51:19 - src.training.trainer - INFO - Précision mixte: activée
+2025-04-09 19:54:03 - root - INFO - Modèle PyTorch sauvegardé: results\transformer_20250409_195116\models\transformer_final.pt
+2025-04-09 20:20:02 - src.training.trainer - INFO - TransformerTrainer initialized with device: cuda
+2025-04-09 20:20:02 - src.training.trainer - INFO - Model parameters: 13,842,257
+2025-04-09 20:22:09 - root - INFO - Using device: cuda
+2025-04-09 20:22:12 - src.training.trainer - INFO - TransformerTrainer initialized with device: cuda
+2025-04-09 20:22:12 - src.training.trainer - INFO - Model parameters: 13,842,257
+2025-04-09 20:22:12 - src.training.trainer - INFO - Début de l'entraînement sur cuda
+2025-04-09 20:22:12 - src.training.trainer - INFO - Accumulation de gradients: 4 étapes
+2025-04-09 20:22:12 - src.training.trainer - INFO - Précision mixte: activée
+2025-04-09 20:22:21 - src.training.trainer - INFO - Epoch 1/20 - Train loss: 8.0580, Val loss: 5.7173, Val perplexity: 304.09
+2025-04-09 20:22:29 - src.training.trainer - INFO - Epoch 2/20 - Train loss: 5.0935, Val loss: 4.3868, Val perplexity: 80.38
+2025-04-09 20:22:37 - src.training.trainer - INFO - Epoch 3/20 - Train loss: 3.5229, Val loss: 2.3041, Val perplexity: 10.02
+2025-04-09 20:22:45 - src.training.trainer - INFO - Epoch 4/20 - Train loss: 1.7006, Val loss: 0.9120, Val perplexity: 2.49
+2025-04-09 20:22:53 - src.training.trainer - INFO - Epoch 5/20 - Train loss: 0.6764, Val loss: 0.2873, Val perplexity: 1.33
+2025-04-09 20:22:53 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_202209\TransformerTrainer_20250409_202212\checkpoint_epoch_5.pt
+2025-04-09 20:22:59 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_202209\TransformerTrainer_20250409_202212\text_samples_epoch_5.txt
+2025-04-09 20:23:07 - src.training.trainer - INFO - Epoch 6/20 - Train loss: 0.2441, Val loss: 0.1004, Val perplexity: 1.11
+2025-04-09 20:23:15 - src.training.trainer - INFO - Epoch 7/20 - Train loss: 0.1122, Val loss: 0.0514, Val perplexity: 1.05
+2025-04-09 20:23:23 - src.training.trainer - INFO - Epoch 8/20 - Train loss: 0.0670, Val loss: 0.0323, Val perplexity: 1.03
+2025-04-09 20:23:31 - src.training.trainer - INFO - Epoch 9/20 - Train loss: 0.0458, Val loss: 0.0227, Val perplexity: 1.02
+2025-04-09 20:23:39 - src.training.trainer - INFO - Epoch 10/20 - Train loss: 0.0341, Val loss: 0.0170, Val perplexity: 1.02
+2025-04-09 20:23:39 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_202209\TransformerTrainer_20250409_202212\checkpoint_epoch_10.pt
+2025-04-09 20:23:48 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_202209\TransformerTrainer_20250409_202212\text_samples_epoch_10.txt
+2025-04-09 20:23:56 - src.training.trainer - INFO - Epoch 11/20 - Train loss: 0.0266, Val loss: 0.0133, Val perplexity: 1.01
+2025-04-09 20:24:04 - src.training.trainer - INFO - Epoch 12/20 - Train loss: 0.0214, Val loss: 0.0108, Val perplexity: 1.01
+2025-04-09 20:24:12 - src.training.trainer - INFO - Epoch 13/20 - Train loss: 0.0177, Val loss: 0.0089, Val perplexity: 1.01
+2025-04-09 20:24:20 - src.training.trainer - INFO - Epoch 14/20 - Train loss: 0.0149, Val loss: 0.0075, Val perplexity: 1.01
+2025-04-09 20:24:28 - src.training.trainer - INFO - Epoch 15/20 - Train loss: 0.0129, Val loss: 0.0064, Val perplexity: 1.01
+2025-04-09 20:24:29 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_202209\TransformerTrainer_20250409_202212\checkpoint_epoch_15.pt
+2025-04-09 20:24:31 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_202209\TransformerTrainer_20250409_202212\text_samples_epoch_15.txt
+2025-04-09 20:24:39 - src.training.trainer - INFO - Epoch 16/20 - Train loss: 0.0111, Val loss: 0.0056, Val perplexity: 1.01
+2025-04-09 20:24:48 - src.training.trainer - INFO - Epoch 17/20 - Train loss: 0.0098, Val loss: 0.0049, Val perplexity: 1.00
+2025-04-09 20:24:56 - src.training.trainer - INFO - Epoch 18/20 - Train loss: 0.0087, Val loss: 0.0043, Val perplexity: 1.00
+2025-04-09 20:25:04 - src.training.trainer - INFO - Epoch 19/20 - Train loss: 0.0077, Val loss: 0.0039, Val perplexity: 1.00
+2025-04-09 20:25:12 - src.training.trainer - INFO - Epoch 20/20 - Train loss: 0.0069, Val loss: 0.0035, Val perplexity: 1.00
+2025-04-09 20:25:12 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_202209\TransformerTrainer_20250409_202212\checkpoint_epoch_20.pt
+2025-04-09 20:25:16 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_202209\TransformerTrainer_20250409_202212\text_samples_epoch_20.txt
+2025-04-09 20:25:16 - root - INFO - Modèle PyTorch sauvegardé: results\transformer_20250409_202209\models\transformer_final.pt
+2025-04-09 21:52:35 - root - INFO - Using device: cuda
+2025-04-09 21:52:38 - src.training.trainer - INFO - TransformerTrainer initialized with device: cuda
+2025-04-09 21:52:38 - src.training.trainer - INFO - Model parameters: 13,842,257
+2025-04-09 21:52:38 - src.training.trainer - INFO - Début de l'entraînement sur cuda
+2025-04-09 21:52:38 - src.training.trainer - INFO - Accumulation de gradients: 4 étapes
+2025-04-09 21:52:38 - src.training.trainer - INFO - Précision mixte: activée
+2025-04-09 21:52:47 - src.training.trainer - INFO - Epoch 1/20 - Train loss: 8.0871, Val loss: 5.7511, Val perplexity: 314.53
+2025-04-09 21:52:55 - src.training.trainer - INFO - Epoch 2/20 - Train loss: 5.0955, Val loss: 4.3874, Val perplexity: 80.43
+2025-04-09 21:53:04 - src.training.trainer - INFO - Epoch 3/20 - Train loss: 3.4764, Val loss: 2.2933, Val perplexity: 9.91
+2025-04-09 21:53:12 - src.training.trainer - INFO - Epoch 4/20 - Train loss: 1.6640, Val loss: 0.9040, Val perplexity: 2.47
+2025-04-09 21:53:20 - src.training.trainer - INFO - Epoch 5/20 - Train loss: 0.6588, Val loss: 0.2869, Val perplexity: 1.33
+2025-04-09 21:53:21 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_215235\TransformerTrainer_20250409_215238\checkpoint_epoch_5.pt
+2025-04-09 21:53:28 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_215235\TransformerTrainer_20250409_215238\text_samples_epoch_5.txt
+2025-04-09 21:53:37 - src.training.trainer - INFO - Epoch 6/20 - Train loss: 0.2388, Val loss: 0.0996, Val perplexity: 1.10
+2025-04-09 21:53:45 - src.training.trainer - INFO - Epoch 7/20 - Train loss: 0.1101, Val loss: 0.0503, Val perplexity: 1.05
+2025-04-09 21:53:54 - src.training.trainer - INFO - Epoch 8/20 - Train loss: 0.0662, Val loss: 0.0315, Val perplexity: 1.03
+2025-04-09 21:54:02 - src.training.trainer - INFO - Epoch 9/20 - Train loss: 0.0458, Val loss: 0.0221, Val perplexity: 1.02
+2025-04-09 21:54:11 - src.training.trainer - INFO - Epoch 10/20 - Train loss: 0.0339, Val loss: 0.0167, Val perplexity: 1.02
+2025-04-09 21:54:11 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_215235\TransformerTrainer_20250409_215238\checkpoint_epoch_10.pt
+2025-04-09 21:54:14 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_215235\TransformerTrainer_20250409_215238\text_samples_epoch_10.txt
+2025-04-09 21:54:22 - src.training.trainer - INFO - Epoch 11/20 - Train loss: 0.0264, Val loss: 0.0131, Val perplexity: 1.01
+2025-04-09 21:54:31 - src.training.trainer - INFO - Epoch 12/20 - Train loss: 0.0213, Val loss: 0.0107, Val perplexity: 1.01
+2025-04-09 21:54:39 - src.training.trainer - INFO - Epoch 13/20 - Train loss: 0.0177, Val loss: 0.0089, Val perplexity: 1.01
+2025-04-09 21:54:48 - src.training.trainer - INFO - Epoch 14/20 - Train loss: 0.0149, Val loss: 0.0075, Val perplexity: 1.01
+2025-04-09 21:54:56 - src.training.trainer - INFO - Epoch 15/20 - Train loss: 0.0127, Val loss: 0.0065, Val perplexity: 1.01
+2025-04-09 21:54:57 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_215235\TransformerTrainer_20250409_215238\checkpoint_epoch_15.pt
+2025-04-09 21:54:59 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_215235\TransformerTrainer_20250409_215238\text_samples_epoch_15.txt
+2025-04-09 21:55:08 - src.training.trainer - INFO - Epoch 16/20 - Train loss: 0.0111, Val loss: 0.0056, Val perplexity: 1.01
+2025-04-09 21:55:16 - src.training.trainer - INFO - Epoch 17/20 - Train loss: 0.0097, Val loss: 0.0049, Val perplexity: 1.00
+2025-04-09 21:55:24 - src.training.trainer - INFO - Epoch 18/20 - Train loss: 0.0086, Val loss: 0.0044, Val perplexity: 1.00
+2025-04-09 21:55:32 - src.training.trainer - INFO - Epoch 19/20 - Train loss: 0.0077, Val loss: 0.0039, Val perplexity: 1.00
+2025-04-09 21:55:41 - src.training.trainer - INFO - Epoch 20/20 - Train loss: 0.0069, Val loss: 0.0035, Val perplexity: 1.00
+2025-04-09 21:55:41 - src.training.trainer - INFO - Checkpoint sauvegardé: results\transformer_20250409_215235\TransformerTrainer_20250409_215238\checkpoint_epoch_20.pt
+2025-04-09 21:55:43 - src.training.trainer - INFO - Exemples de texte générés et sauvegardés dans results\transformer_20250409_215235\TransformerTrainer_20250409_215238\text_samples_epoch_20.txt
+2025-04-09 21:55:43 - root - INFO - Modèle PyTorch sauvegardé: results\transformer_20250409_215235\models\transformer_final.pt

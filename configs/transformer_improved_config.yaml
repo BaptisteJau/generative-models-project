@@ -1,0 +1,25 @@
+# Configuration améliorée pour le transformer
+model_type: transformer
+vocab_size: 50257  # Taille du vocabulaire GPT-2
+
+# Architecture optimisée
+embedding_dim: 512      # Augmenté pour une meilleure représentation sémantique
+num_heads: 8           # Plus de têtes d'attention pour capturer différents aspects  
+num_layers: 6          # Plus de couches pour un modèle plus profond
+dropout_rate: 0.1      # Standard pour les transformers
+
+# Paramètres d'entraînement
+learning_rate: 0.0001   # Taux plus faible pour un apprentissage plus stable
+batch_size: 8          # Petit batch mais suffisant pour la diversité
+max_sequence_length: 256  # Plus longue séquence pour mieux apprendre les dépendances
+num_epochs: 30         # Plus d'époques pour un meilleur apprentissage
+save_every: 5          # Checkpoints réguliers
+
+# Optimisations
+use_amp: true
+gradient_accumulation_steps: 8  # Effective batch size = 8*8 = 64
+weight_decay: 0.01     # Régularisation pour éviter l'overfitting
+
+# Paramètres spécifiques au transformer
+warmup_steps: 1000     # Augmentation progressive du learning rate
+learning_rate_decay: linear  # Décroissance linéaire du learning rate

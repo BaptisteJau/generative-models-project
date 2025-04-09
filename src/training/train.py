@@ -248,12 +248,21 @@ def get_data_loaders(model_type, config):
 
 def train_model(model_type, config_path):
     """
-    Fonction principale pour entraîner un modèle génératif
-    
-    Args:
-        model_type: Type de modèle ('cnn', 'transformer', 'diffusion')
-        config_path: Chemin vers le fichier de configuration
+    Entraîne un modèle selon le type et la configuration
     """
+    # Configuration
+    config = load_configuration(config_path)
+    device = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+    
+    # Libérer le maximum de mémoire
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+        import gc
+        gc.collect()
+    
+    # Suite du code inchangée
+    
     # Charger la configuration
     config = load_configuration(config_path)
     
@@ -341,7 +350,7 @@ def train_model(model_type, config_path):
         logger.error(f"Erreur lors de la sauvegarde du modèle: {str(e)}")
     
     if torch.cuda.is_available() and config.get('use_amp', False):
-        scaler = GradScaler()
+        scaler = torch.amp.GradScaler('cuda')
         config['scaler'] = scaler
 
     return model, history

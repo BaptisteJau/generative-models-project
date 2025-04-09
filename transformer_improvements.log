@@ -1,0 +1,94 @@
+2025-04-09 22:58:37,829 - __main__ - INFO - Modèle chargé avec succès: results/transformer_20250409_202209/models/transformer_final.pt
+2025-04-09 22:58:49,608 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'default'
+2025-04-09 22:58:50,088 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:50,089 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'creative'
+2025-04-09 22:58:50,381 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:50,382 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'balanced'
+2025-04-09 22:58:50,660 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:50,660 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'focused'
+2025-04-09 22:58:50,919 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:50,920 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'deterministic'
+2025-04-09 22:58:55,925 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'default'
+2025-04-09 22:58:56,169 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:56,170 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'creative'
+2025-04-09 22:58:56,475 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:56,475 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'balanced'
+2025-04-09 22:58:56,779 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:56,779 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'focused'
+2025-04-09 22:58:57,020 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:58:57,021 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'deterministic'
+2025-04-09 22:59:00,819 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'default'
+2025-04-09 22:59:01,057 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:01,058 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'creative'
+2025-04-09 22:59:01,310 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:01,311 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'balanced'
+2025-04-09 22:59:01,560 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:01,560 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'focused'
+2025-04-09 22:59:04,349 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:04,350 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'deterministic'
+2025-04-09 22:59:08,360 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'default'
+2025-04-09 22:59:08,608 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:08,609 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'creative'
+2025-04-09 22:59:08,868 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:08,869 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'balanced'
+2025-04-09 22:59:09,127 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:09,128 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'focused'
+2025-04-09 22:59:09,370 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:09,370 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'deterministic'
+2025-04-09 22:59:13,271 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'default'
+2025-04-09 22:59:13,544 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:13,544 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'creative'
+2025-04-09 22:59:13,809 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:13,810 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'balanced'
+2025-04-09 22:59:14,052 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:14,052 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'focused'
+2025-04-09 22:59:14,297 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 22:59:14,297 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'deterministic'
+2025-04-09 22:59:14,297 - __main__ - INFO - Comparaison sauvegardée dans results/improved_transformer\generation_comparison.md
+2025-04-09 23:02:02,833 - __main__ - INFO - Modèle chargé avec succès: results/transformer_20250409_202209/models/transformer_final.pt
+2025-04-09 23:02:14,305 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'default'
+2025-04-09 23:02:14,628 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:14,628 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'creative'
+2025-04-09 23:02:14,874 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:14,874 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'balanced'
+2025-04-09 23:02:15,129 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:15,129 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'focused'
+2025-04-09 23:02:15,379 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:15,379 - __main__ - INFO - Génération réussie pour 'Once upon a time' avec config 'deterministic'
+2025-04-09 23:02:19,378 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'default'
+2025-04-09 23:02:19,630 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:19,630 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'creative'
+2025-04-09 23:02:19,876 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:19,876 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'balanced'
+2025-04-09 23:02:20,125 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:20,126 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'focused'
+2025-04-09 23:02:20,372 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:20,373 - __main__ - INFO - Génération réussie pour 'The future of artificial intelligence' avec config 'deterministic'
+2025-04-09 23:02:24,802 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'default'
+2025-04-09 23:02:25,052 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:25,052 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'creative'
+2025-04-09 23:02:25,448 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:25,449 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'balanced'
+2025-04-09 23:02:25,701 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:25,702 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'focused'
+2025-04-09 23:02:25,957 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:25,958 - __main__ - INFO - Génération réussie pour 'In a world where technology' avec config 'deterministic'
+2025-04-09 23:02:30,235 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'default'
+2025-04-09 23:02:30,483 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:30,484 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'creative'
+2025-04-09 23:02:30,742 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:30,743 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'balanced'
+2025-04-09 23:02:30,995 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:30,996 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'focused'
+2025-04-09 23:02:31,235 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:31,236 - __main__ - INFO - Génération réussie pour 'Scientists recently discovered' avec config 'deterministic'
+2025-04-09 23:02:35,113 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'default'
+2025-04-09 23:02:35,359 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:35,359 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'creative'
+2025-04-09 23:02:35,606 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:35,606 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'balanced'
+2025-04-09 23:02:35,860 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:35,861 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'focused'
+2025-04-09 23:02:37,161 - src.models.transformer.transformer_model - ERROR - Erreur dans generate(): Index tensor must have the same number of dimensions as self tensor
+2025-04-09 23:02:37,161 - __main__ - INFO - Génération réussie pour 'The most important lesson I learned' avec config 'deterministic'
+2025-04-09 23:02:37,162 - __main__ - INFO - Comparaison sauvegardée dans results/improved_transformer\generation_comparison.md

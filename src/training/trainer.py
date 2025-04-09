@@ -4,10 +4,10 @@ import torch.optim as optim
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import contextlib  # Ajout de l'import manquant
 from tqdm import tqdm
 import torchvision.utils as vutils
 import logging
-import os
 from datetime import datetime
 from src.utils.logging_config import configure_logging
 
@@ -16,74 +16,45 @@ logger = logging.getLogger(__name__)
 
 class BaseTrainer:
     """Classe de base pour tous les trainers"""
+    
     def __init__(self, model, train_loader, val_loader=None, config=None):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.config = config or {}
-        self.device = self.config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
-        self.epochs = self.config.get('num_epochs', 10)
-        self.save_dir = self.config.get('save_dir', 'checkpoints')
+        
+        # Attributs communs
+        self.start_epoch = 1
+        self.num_epochs = self.config.get('num_epochs', 10)
+        self.device = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Répertoire de sauvegarde
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.save_dir = os.path.join(
+            self.config.get('save_dir', 'checkpoints'), 
+            f"{self.__class__.__name__}_{timestamp}"
+        )
         os.makedirs(self.save_dir, exist_ok=True)
         
     def train(self):
-        """Méthode à implémenter dans les classes dérivées"""
-        raise NotImplementedError("Subclass must implement abstract method")
-    
+        """Méthode principale d'entraînement à implémenter dans les sous-classes"""
+        raise NotImplementedError("Les sous-classes doivent implémenter train()")
+        
     def validate(self):
-        """Valider le modèle Transformer"""
-        self.model.eval()
-        val_loss = 0.0
-        num_batches = 0
+        """Méthode de validation à implémenter dans les sous-classes"""
+        raise NotImplementedError("Les sous-classes doivent implémenter validate()")
         
-        with torch.no_grad():
-            for batch in self.val_loader:
-                # Extraire input_ids et labels
-                if isinstance(batch, dict):
-                    input_ids = batch["input_ids"].to(self.device)
-                    labels = batch["labels"].to(self.device)
-                    attention_mask = batch.get("attention_mask", None)
-                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
-                    # Format tuple (inputs, targets)
-                    input_ids = batch[0].to(self.device)
-                    labels = batch[1].to(self.device)
-                    attention_mask = None
-                else:
-                    raise ValueError("Transformer validation requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
-                
-                # Forward pass
-                outputs = self.model(input_ids, attention_mask=attention_mask)
-                
-                # Traitement similaire à la méthode train()
-                if hasattr(outputs, 'logits'):
-                    logits = outputs.logits
-                elif isinstance(outputs, dict) and 'logits' in outputs:
-                    logits = outputs['logits']
-                else:
-                    logits = outputs
-                
-                if logits.dim() > 2:
-                    logits = logits.reshape(-1, logits.size(-1))
-                    labels = labels.reshape(-1)
-                
-                # Calculer la perte
-                loss = self.criterion(logits, labels)
-                
-                val_loss += loss.item()
-                num_batches += 1
-        
-        # Moyenne de perte pour cette validation
-        avg_val_loss = val_loss / num_batches
-        perplexity = torch.exp(torch.tensor(avg_val_loss)).item()
-        
-        return avg_val_loss, perplexity
-    
-    def save_model(self, epoch):
-        """Sauvegarde du modèle"""
-        os.makedirs(self.save_dir, exist_ok=True)
-        model_path = os.path.join(self.save_dir, f"model_epoch_{epoch}.pt")
-        torch.save(self.model.state_dict(), model_path)
-        return model_path
+    def save_checkpoint(self, epoch, metrics=None):
+        """Sauvegarde un point de contrôle du modèle"""
+        checkpoint_path = os.path.join(self.save_dir, f"checkpoint_epoch_{epoch}.pt")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict() if hasattr(self, 'optimizer') else None,
+            'metrics': metrics
+        }, checkpoint_path)
+        logger.info(f"Checkpoint sauvegardé: {checkpoint_path}")
+        return checkpoint_path
 
 
 class GANTrainer(BaseTrainer):
@@ -408,114 +379,191 @@ class TransformerTrainer(BaseTrainer):
     """Trainer spécialisé pour les modèles Transformer génératifs"""
     
     def __init__(self, model, train_loader, val_loader=None, config=None):
+        """
+        Initialise le gestionnaire d'entraînement pour les Transformers
+        
+        Args:
+            model: Le modèle Transformer à entraîner
+            train_loader: DataLoader pour les données d'entraînement
+            val_loader: DataLoader pour les données de validation
+            config: Dictionnaire de configuration pour l'entraînement
+        """
         super().__init__(model, train_loader, val_loader, config)
         
-        # Use optimizer from model or create a new one
-        self.optimizer = getattr(model, 'optimizer', None)
-        if self.optimizer is None:
-            lr = config.get('learning_rate', 0.001)
-            self.optimizer = torch.optim.Adam(
-                self.model.parameters(),
-                lr=lr
-            )
+        # Optimizer
+        lr = config.get('learning_rate', 0.001)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         
+        # Loss function
         self.criterion = nn.CrossEntropyLoss()
-        self.device = config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Move model to device
         self.model = self.model.to(self.device)
         
+        # Logging
+        logger.info(f"TransformerTrainer initialized with device: {self.device}")
+        logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    
     def train(self):
-        """Entraîner le modèle Transformer pour la génération de texte"""
-        history = {"train_loss": [], "val_loss": [], "perplexity": []}
+        """Entraîne le modèle Transformer avec optimisation de mémoire"""
+        history = {'train_loss': [], 'val_loss': []}
         
-        # Déplacer le modèle vers le device approprié
-        self.model = self.model.to(self.device)
+        # Paramètres pour économiser la mémoire
+        gradient_accumulation_steps = self.config.get('gradient_accumulation_steps', 1)
+        use_amp = self.config.get('use_amp', False)
         
-        for epoch in range(self.epochs):
-            # Entraînement
+        if use_amp:
+            # Version compatible avec différentes versions de PyTorch
+            try:
+                # Pour PyTorch plus récent
+                scaler = torch.amp.GradScaler()
+            except (AttributeError, TypeError):
+                # Pour PyTorch plus ancien
+                scaler = torch.cuda.amp.GradScaler()
+        else:
+            scaler = None
+        
+        logger.info(f"Début de l'entraînement sur {self.device}")
+        logger.info(f"Accumulation de gradients: {gradient_accumulation_steps} étapes")
+        logger.info(f"Précision mixte: {'activée' if use_amp else 'désactivée'}")
+        
+        for epoch in range(self.start_epoch, self.num_epochs + 1):
+            # PHASE D'ENTRAÎNEMENT
             self.model.train()
-            train_loss = 0.0
-            num_batches = 0
+            total_loss = 0
             
-            # Barre de progression
-            pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs}")
+            # Réinitialiser les gradients
+            self.optimizer.zero_grad()
+            accumulated_steps = 0
             
-            for batch in pbar:
-                # Extraire input_ids et labels
-                if isinstance(batch, dict):
-                    input_ids = batch["input_ids"].to(self.device)
-                    labels = batch["labels"].to(self.device)
-                    # Ignorer attention_mask car notre modèle ne le supporte pas
-                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
+            progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader))
+            progress_bar.set_description(f"Epoch {epoch}/{self.num_epochs}")
+            
+            for step, batch in progress_bar:
+                # Charger les données sur le device
+                if isinstance(batch, (tuple, list)):
                     input_ids = batch[0].to(self.device)
                     labels = batch[1].to(self.device)
+                elif isinstance(batch, dict):
+                    input_ids = batch['input_ids'].to(self.device)
+                    labels = batch['labels'].to(self.device)
                 else:
-                    raise ValueError("Transformer training requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
+                    raise ValueError(f"Format de batch non supporté: {type(batch)}")
                 
-                # Forward pass - utiliser seulement les input_ids
-                try:
-                    # Essayer avec la signature qui semble correspondre à votre modèle
-                    outputs = self.model(input_ids, trg=labels)
-                except TypeError as e:
+                # Forward pass avec ou sans précision mixte
+                if use_amp:
+                    with torch.amp.autocast('cuda'):
+                        try:
+                            outputs = self.model(input_ids, labels=labels)
+                            if isinstance(outputs, tuple):
+                                logits, loss = outputs
+                            else:
+                                logits = outputs
+                                loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                        except Exception as e:
+                            # Si la première tentative échoue, essayer d'autres signatures d'appel
+                            try:
+                                logits = self.model(input_ids)
+                                loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                            except Exception as sub_e:
+                                logger.error(f"Erreur dans le forward pass: {e}, puis {sub_e}")
+                                raise e
+                else:
                     try:
-                        # Essayer d'autres signatures communes
-                        outputs = self.model(input_ids, labels)
-                    except TypeError:
-                        # Si tout échoue, afficher un message d'erreur utile
-                        raise TypeError(f"Impossible d'appeler le modèle Transformer. Vérifiez les arguments attendus par la méthode forward(): {e}")
+                        outputs = self.model(input_ids, labels=labels)
+                        if isinstance(outputs, tuple):
+                            logits, loss = outputs
+                        else:
+                            logits = outputs
+                            loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                    except Exception as e:
+                        try:
+                            logits = self.model(input_ids)
+                            loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                        except Exception as sub_e:
+                            logger.error(f"Erreur dans le forward pass: {e}, puis {sub_e}")
+                            raise e
                 
-                # Reformatter si nécessaire pour calculer la perte
-                if hasattr(outputs, 'logits'):
-                    # Pour les modèles HuggingFace
-                    logits = outputs.logits
-                elif isinstance(outputs, dict) and 'logits' in outputs:
-                    logits = outputs['logits']
+                # Mise à l'échelle de la perte pour l'accumulation
+                loss = loss / gradient_accumulation_steps
+                
+                # Backward pass
+                if use_amp:
+                    scaler.scale(loss).backward()
                 else:
-                    # Pour des sorties standard (batch_size, seq_len, vocab_size)
-                    logits = outputs
+                    loss.backward()
                 
-                if logits.dim() > 2:
-                    # [batch_size, seq_len, vocab_size] -> [batch_size * seq_len, vocab_size]
-                    logits = logits.reshape(-1, logits.size(-1))
-                    # [batch_size, seq_len] -> [batch_size * seq_len]
-                    labels = labels.reshape(-1)
+                # Mettre à jour les poids après accumulation
+                accumulated_steps += 1
+                if accumulated_steps % gradient_accumulation_steps == 0:
+                    if use_amp:
+                        # Unscale gradients
+                        scaler.unscale_(self.optimizer)
+                        
+                        # Clip gradients to avoid explosion
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                        
+                        # Update weights with mixed precision
+                        scaler.step(self.optimizer)
+                        scaler.update()
+                    else:
+                        # Clip gradients
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                        
+                        # Update weights normally
+                        self.optimizer.step()
+                    
+                    # Reset gradients
+                    self.optimizer.zero_grad()
                 
-                # Calculer la perte
-                loss = self.criterion(logits, labels)
+                # Pour l'affichage
+                display_loss = loss.item() * gradient_accumulation_steps
+                total_loss += display_loss
+                progress_bar.set_postfix(loss=display_loss)
                 
-                # Optimisation
+                # Libérer la mémoire GPU après chaque batch
+                if hasattr(torch.cuda, 'empty_cache'):
+                    torch.cuda.empty_cache()
+            
+            # Gérer l'accumulation finale à la fin de l'époque si nécessaire
+            if accumulated_steps % gradient_accumulation_steps != 0:
+                if use_amp:
+                    scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    scaler.step(self.optimizer)
+                    scaler.update()
+                else:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.optimizer.step()
+                
                 self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                
-                # Enregistrer la perte
-                train_loss += loss.item()
-                num_batches += 1
-                
-                # Mettre à jour la barre de progression
-                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
             
-            # Moyenne de perte pour cette époque
-            avg_train_loss = train_loss / num_batches
-            history["train_loss"].append(avg_train_loss)
+            # Calculer la perte moyenne d'entraînement
+            avg_train_loss = total_loss / len(self.train_loader)
+            history['train_loss'].append(avg_train_loss)
             
-            # Validation
-            if self.val_loader:
-                val_loss, perplexity = self.validate()
-                history["val_loss"].append(val_loss)
-                history["perplexity"].append(perplexity)
-                
-                print(f"Epoch {epoch+1}/{self.epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Perplexity: {perplexity:.2f}")
+            # PHASE DE VALIDATION
+            if self.val_loader is not None:
+                val_loss, val_perplexity = self.validate()
+                history['val_loss'].append(val_loss)
+                logger.info(f"Epoch {epoch}/{self.num_epochs} - Train loss: {avg_train_loss:.4f}, Val loss: {val_loss:.4f}, Val perplexity: {val_perplexity:.2f}")
             else:
-                print(f"Epoch {epoch+1}/{self.epochs} - Train Loss: {avg_train_loss:.4f}")
+                logger.info(f"Epoch {epoch}/{self.num_epochs} - Train loss: {avg_train_loss:.4f}")
             
-            # Sauvegarder le modèle périodiquement
-            if (epoch + 1) % self.config.get('save_interval', 5) == 0:
-                self.save_model(epoch)
+            # Sauvegarder le modèle
+            if epoch % self.config.get('save_every', 5) == 0 or epoch == self.num_epochs:
+                metrics = {'train_loss': avg_train_loss}
+                if self.val_loader is not None:
+                    metrics['val_loss'] = val_loss
+                    metrics['val_perplexity'] = val_perplexity
+                
+                self.save_checkpoint(epoch, metrics)
+                
                 # Générer un exemple de texte
                 self.generate_text_sample(epoch)
-        
+                
         return history
-    
+        
     def validate(self):
         """Valider le modèle Transformer"""
         self.model.eval()
@@ -528,124 +576,73 @@ class TransformerTrainer(BaseTrainer):
                 if isinstance(batch, dict):
                     input_ids = batch["input_ids"].to(self.device)
                     labels = batch["labels"].to(self.device)
-                    # Ignorer attention_mask car notre modèle ne le supporte pas
                 elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
-                    # Format tuple (inputs, targets)
                     input_ids = batch[0].to(self.device)
                     labels = batch[1].to(self.device)
                 else:
-                    raise ValueError("Transformer validation requires batches as dictionary with 'input_ids'/'labels' or as tuple (inputs, targets)")
+                    raise ValueError("Format de batch non supporté pour validation")
                 
-                # Forward pass - utiliser la même méthode que dans train()
+                # Forward pass
                 try:
-                    # Essayer avec la signature qui correspond à votre modèle
-                    outputs = self.model(input_ids, trg=labels)
-                except TypeError as e:
+                    outputs = self.model(input_ids, labels=labels)
+                    if isinstance(outputs, tuple):
+                        _, loss = outputs
+                    else:
+                        logits = outputs
+                        loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                except Exception as e:
                     try:
-                        # Essayer d'autres signatures communes
-                        outputs = self.model(input_ids, labels)
-                    except TypeError:
-                        # Si tout échoue, afficher un message d'erreur utile
-                        raise TypeError(f"Impossible d'appeler le modèle Transformer. Vérifiez les arguments attendus par la méthode forward(): {e}")
-                
-                # Reformatter si nécessaire pour calculer la perte
-                if hasattr(outputs, 'logits'):
-                    logits = outputs.logits
-                elif isinstance(outputs, dict) and 'logits' in outputs:
-                    logits = outputs['logits']
-                else:
-                    logits = outputs
-                
-                if logits.dim() > 2:
-                    logits = logits.reshape(-1, logits.size(-1))
-                    labels = labels.reshape(-1)
-                
-                # Calculer la perte
-                loss = self.criterion(logits, labels)
+                        logits = self.model(input_ids)
+                        loss = self.criterion(logits.view(-1, self.model.vocab_size), labels.view(-1))
+                    except Exception as sub_e:
+                        logger.error(f"Erreur dans le forward pass (validation): {e}, puis {sub_e}")
+                        raise e
                 
                 val_loss += loss.item()
                 num_batches += 1
+                
+                # Libérer la mémoire GPU
+                if hasattr(torch.cuda, 'empty_cache'):
+                    torch.cuda.empty_cache()
         
         # Moyenne de perte pour cette validation
-        avg_val_loss = val_loss / num_batches
+        avg_val_loss = val_loss / max(num_batches, 1)
         perplexity = torch.exp(torch.tensor(avg_val_loss)).item()
         
         return avg_val_loss, perplexity
     
     def generate_text_sample(self, epoch):
         """Génère un exemple de texte"""
-        # Assurez-vous que le modèle est en mode évaluation
-        self.model.eval()
-        
-        # Vérifier si le modèle a une méthode generate
-        if hasattr(self.model, 'generate') and callable(getattr(self.model, 'generate')):
-            # Différents prompts pour tester la génération
-            prompts = [
-                "Once upon a time",
-                "The meaning of life is",
-                "In the beginning",
-                "The future of AI"
-            ]
+        try:
+            self.model.eval()
             
-            sample_file = os.path.join(self.save_dir, f"text_samples_epoch_{epoch+1}.txt")
-            
-            # Inspecter les paramètres attendus par la méthode generate
-            import inspect
-            generate_params = inspect.signature(self.model.generate).parameters
+            prompts = ["Once upon a time", "The future of AI", "In a galaxy far"]
+            sample_file = os.path.join(self.save_dir, f"text_samples_epoch_{epoch}.txt")
             
             with open(sample_file, 'w', encoding='utf-8') as f:
                 for prompt in prompts:
                     try:
-                        # Tokeniser le prompt
-                        if hasattr(self.model, 'tokenizer'):
-                            tokenizer = self.model.tokenizer
+                        # Essayer d'utiliser la fonction generate du modèle si disponible
+                        if hasattr(self.model, 'generate') and callable(self.model.generate):
+                            generated_text = self.model.generate(prompt, max_length=100, temperature=0.8)
                         else:
-                            from transformers import AutoTokenizer
-                            tokenizer = AutoTokenizer.from_pretrained('gpt2')
-                        
-                        input_ids = tokenizer(prompt, return_tensors='pt')['input_ids'].to(self.device)
-                        
-                        # Générer du texte avec les bons paramètres
-                        with torch.no_grad():
-                            # Utiliser les paramètres appropriés selon l'inspection
-                            kwargs = {}
-                            
-                            # Gérer différentes possibilités pour le paramètre de longueur
-                            if 'max_length' in generate_params:
-                                kwargs['max_length'] = 100
-                            elif 'max_new_tokens' in generate_params:
-                                kwargs['max_new_tokens'] = 100
-                            elif 'length' in generate_params:
-                                kwargs['length'] = 100
-                            
-                            # Si la méthode accepte temperature
-                            if 'temperature' in generate_params:
-                                kwargs['temperature'] = 0.8
-                                
-                            # Si la méthode accepte des input_ids
-                            if 'input_ids' in generate_params:
-                                output = self.model.generate(input_ids=input_ids, **kwargs)
-                            else:
-                                # Sinon, passer directement le prompt
-                                output = self.model.generate(prompt, **kwargs)
-                        
-                        # Décoder et écrire le texte généré
-                        if isinstance(output, torch.Tensor):
-                            if hasattr(self.model, 'tokenizer'):
-                                generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-                            else:
-                                generated_text = f"[Tensor output not decodable: {output.shape}]"
-                        else:
-                            # Si le modèle renvoie déjà du texte
-                            generated_text = output
+                            # Sinon, utiliser generate_text avec un tokenizer basique
+                            from src.utils.text_utils import tokenize_text, detokenize_text
+                            tokens = tokenize_text(prompt)
+                            start_tokens = torch.tensor([tokens], device=self.device)
+                            generated_tokens = self.model.generate_text(start_tokens, max_length=100)
+                            generated_text = detokenize_text(generated_tokens[0].cpu().numpy())
                         
                         f.write(f"Prompt: {prompt}\n")
                         f.write(f"Generated: {generated_text}\n\n")
-                    
                     except Exception as e:
                         f.write(f"Prompt: {prompt}\n")
                         f.write(f"Error generating text: {str(e)}\n\n")
-                        print(f"Error generating text for prompt '{prompt}': {str(e)}")
+                        logger.error(f"Erreur lors de la génération de texte: {e}")
+            
+            logger.info(f"Exemples de texte générés et sauvegardés dans {sample_file}")
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération d'exemples de texte: {e}")
 
 
 class CNNTrainer(BaseTrainer):
