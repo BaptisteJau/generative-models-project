@@ -1,9 +1,9 @@
 learning_rate: 0.001
-batch_size: 32
-num_epochs: 50
+batch_size: 64
+num_epochs: 20
 input_shape:
-  height: 64
-  width: 64
+  height: 32
+  width: 32
   channels: 3
 num_classes: 10
 optimizer: Adam
@@ -17,3 +17,11 @@ augmentation:
   zoom_range: 0.2
   horizontal_flip: true
   fill_mode: nearest
+latent_dim: 64
+use_subset: true
+subset_size: 0.3
+log_interval: 100
+plot_interval: 1000
+save_interval: 10
+preconvert: true
+use_amp: true

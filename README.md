@@ -60,6 +60,10 @@ pip install -r requirements.txt
 3. **Generating Outputs**: After training, use the `generate.py` script in the `inference` directory to generate new samples from the trained models.
 4. **Exploration and Analysis**: Utilize the Jupyter notebooks in the `notebooks` directory for model exploration and results analysis.
 
+```bash
+python scripts/evaluate_gan.py --model_path results/cnn_20250408_205105/cnn_final
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a pull request or open an issue for any suggestions or improvements.
