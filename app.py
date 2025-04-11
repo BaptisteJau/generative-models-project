@@ -198,7 +198,7 @@ def transformer_ui(model_path):
                     st.success(f"Sauvegardé dans results/{filename}")
 
 def gan_ui(model_path):
-    """Interface utilisateur pour le modèle GAN"""
+    """Interface utilisateur améliorée pour le modèle GAN"""
     st.markdown('<div class="model-header">GAN - Génération d\'Images</div>', unsafe_allow_html=True)
     
     if not model_path:
@@ -210,68 +210,129 @@ def gan_ui(model_path):
     if not success:
         return
     
-    # Interface utilisateur
-    st.markdown('<div class="section-header">Génération d\'images</div>', unsafe_allow_html=True)
+    # Interface améliorée avec tabs
+    tabs = st.tabs(["Génération basique", "Paramètres avancés", "Exploration latente"])
     
-    col1, col2 = st.columns(2)
-    with col1:
-        num_images = st.slider("Nombre d'images:", min_value=1, max_value=16, value=4)
-    with col2:
-        image_size = st.selectbox("Taille des images:", options=["64x64", "128x128"], index=0)
+    with tabs[0]:
+        st.markdown('<div class="section-header">Génération d\'images</div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            num_images = st.slider("Nombre d'images:", min_value=1, max_value=16, value=4)
+        with col2:
+            image_size = st.selectbox("Taille des images:", options=["64x64", "128x128"], index=0)
+        
+        # Génération d'images
+        if st.button("Générer des images"):
+            with st.spinner("Génération en cours..."):
+                try:
+                    generated_images = model.generate_images(num_images=num_images)
+                    
+                    # Afficher les images générées
+                    st.markdown('<div class="section-header">Images générées:</div>', unsafe_allow_html=True)
+                    
+                    # Organiser en grille
+                    cols = min(4, num_images)
+                    rows = (num_images + cols - 1) // cols
+                    
+                    for i in range(rows):
+                        row_cols = st.columns(cols)
+                        for j in range(cols):
+                            idx = i * cols + j
+                            if idx < num_images:
+                                img = generated_images[idx]
+                                # Normaliser si nécessaire
+                                if img.min() < 0:
+                                    img = (img + 1) / 2
+                                if isinstance(img, torch.Tensor):
+                                    img = img.detach().cpu().numpy().transpose(1, 2, 0)
+                                elif isinstance(img, np.ndarray) and img.shape[0] == 3:
+                                    img = img.transpose(1, 2, 0)
+                                row_cols[j].image(img, caption=f"Image {idx+1}", use_column_width=True)
+                    
+                except Exception as e:
+                    st.error(f"Erreur lors de la génération d'images: {e}")
     
-    # Génération d'images
-    if st.button("Générer des images"):
-        with st.spinner("Génération en cours..."):
-            try:
-                generated_images = model.generate_images(num_images=num_images)
-                
-                # Afficher les images générées
-                st.markdown('<div class="section-header">Images générées:</div>', unsafe_allow_html=True)
-                
-                # Organiser en grille
-                cols = min(4, num_images)
-                rows = (num_images + cols - 1) // cols
-                
-                for i in range(rows):
-                    row_cols = st.columns(cols)
-                    for j in range(cols):
-                        idx = i * cols + j
-                        if idx < num_images:
-                            img = generated_images[idx]
-                            # Normaliser si nécessaire
-                            if img.min() < 0:
-                                img = (img + 1) / 2
-                            if isinstance(img, torch.Tensor):
-                                img = img.detach().cpu().numpy().transpose(1, 2, 0)
-                            elif isinstance(img, np.ndarray) and img.shape[0] == 3:
-                                img = img.transpose(1, 2, 0)
-                            row_cols[j].image(img, caption=f"Image {idx+1}", use_column_width=True)
-                
-            except Exception as e:
-                st.error(f"Erreur lors de la génération d'images: {e}")
+    with tabs[1]:
+        st.markdown('<div class="section-header">Paramètres avancés de génération</div>', unsafe_allow_html=True)
+        
+        truncation = st.slider("Troncature:", min_value=0.1, max_value=1.5, value=0.8, step=0.1,
+                             help="Valeurs plus basses donnent des images plus 'moyennes', plus élevées plus diversifiées")
+        
+        # Seed for reproducibility
+        use_seed = st.checkbox("Utiliser un seed (reproductibilité)", value=False)
+        seed = st.number_input("Seed:", value=42, disabled=not use_seed)
+        
+        if st.button("Générer avec paramètres avancés"):
+            with st.spinner("Génération en cours..."):
+                try:
+                    # Set seed if needed
+                    if use_seed:
+                        np.random.seed(int(seed))
+                    
+                    # Generate images with truncation
+                    generated_images = model.generate_images(num_images=4, truncation=truncation)
+                    
+                    # Display images in 2x2 grid
+                    st.markdown('<div class="section-header">Images générées avec paramètres avancés:</div>', unsafe_allow_html=True)
+                    col1, col2 = st.columns(2)
+                    col3, col4 = st.columns(2)
+                    
+                    cols = [col1, col2, col3, col4]
+                    for i, img in enumerate(generated_images[:4]):
+                        if img.min() < 0:
+                            img = (img + 1) / 2
+                        cols[i].image(img, caption=f"Image {i+1} (truncation={truncation})", use_column_width=True)
+                    
+                except Exception as e:
+                    st.error(f"Erreur lors de la génération d'images: {e}")
     
-    # Interface d'exploration latente
-    st.markdown('<div class="section-header">Exploration latente</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-text">Interpolation entre deux points dans l\'espace latent</div>', unsafe_allow_html=True)
-    
-    if st.button("Générer une interpolation"):
-        with st.spinner("Création de l'interpolation..."):
-            try:
-                explorer = LatentExplorer(model)
-                steps = 10
-                
-                # Générer les images interpolées
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = os.path.join("results", f"latent_interpolation_{timestamp}.gif")
-                explorer.latent_space_interpolation(n_steps=steps, animate=True, save_path=output_path)
-                
-                # Afficher le GIF
-                with open(output_path, 'rb') as f:
-                    gif_data = f.read()
-                    st.image(gif_data, caption="Interpolation dans l'espace latent")
-                
-            except Exception as e:
-                st.error(f"Erreur lors de l'exploration latente: {e}")
+    with tabs[2]:
+        st.markdown('<div class="section-header">Exploration latente avancée</div>', unsafe_allow_html=True)
+        
+        exploration_type = st.selectbox(
+            "Type d'exploration:",
+            options=["Interpolation linéaire", "Mélange de styles", "Marche aléatoire"],
+            index=0
+        )
+        
+        if exploration_type == "Interpolation linéaire":
+            steps = st.slider("Nombre d'étapes d'interpolation:", min_value=5, max_value=30, value=10)
+            
+            if st.button("Générer l'interpolation"):
+                with st.spinner("Création de l'interpolation..."):
+                    try:
+                        explorer = LatentExplorer(model)
+                        
+                        # Générer les images interpolées
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        output_path = os.path.join("results", f"latent_interpolation_{timestamp}.gif")
+                        explorer.latent_space_interpolation(n_steps=steps, animate=True, save_path=output_path)
+                        
+                        # Afficher le GIF
+                        with open(output_path, 'rb') as f:
+                            gif_data = f.read()
+                            st.image(gif_data, caption="Interpolation dans l'espace latent")
+                        
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'exploration latente: {e}")
+                        
+        elif exploration_type == "Mélange de styles":
+            num_sources = st.slider("Nombre d'images sources:", min_value=2, max_value=5, value=3)
+            
+            if st.button("Générer le mélange de styles"):
+                with st.spinner("Création du mélange de styles..."):
+                    try:
+                        explorer = LatentExplorer(model)
+                        
+                        # Générer la grille de mélanges de style
+                        style_grid = explorer.style_mixing(num_samples=num_sources)
+                        
+                        # Afficher la grille
+                        st.image(style_grid, caption="Mélange de styles (lignes/colonnes = images sources)", use_column_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"Erreur lors du mélange de styles: {e}")
 
 def main():
     st.markdown('<div class="main-header">Visualisation des Modèles Génératifs</div>', unsafe_allow_html=True)

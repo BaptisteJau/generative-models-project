@@ -220,25 +220,60 @@ def load_data(config):
         raise ValueError(f"Data type {data_type} not supported. Choose from 'image', 'text'.")
 
 def preconvert_dataset_to_tensorflow(dataset, batch_size=32, normalize_range=(-1, 1)):
-    """Convertit tout le dataset en tensors TensorFlow à l'avance"""
+    """Conversion améliorée qui gère les batches de tailles différentes"""
     from src.utils.framework_utils import FrameworkBridge
     import tensorflow as tf
+    import numpy as np
     
-    converted_data = []
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    # Utiliser directement les données converties
+    all_images = []
     
+    # Créer un DataLoader avec drop_last=True
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, drop_last=True
+    )
+    
+    # Extraire et convertir toutes les images d'abord
     for batch in dataloader:
+        # Extraire les images selon le format
         if isinstance(batch, (list, tuple)) and len(batch) >= 2:
-            imgs, _ = batch
+            imgs = batch[0]
+        elif isinstance(batch, tuple) and len(batch) == 1:
+            imgs = batch[0]
         else:
             imgs = batch
+            
+        # S'assurer que c'est un tensor et non une liste
+        if not isinstance(imgs, torch.Tensor):
+            imgs = torch.stack(imgs)
+            
+        # Déballer les tensors si nécessaire (cas des TensorDataset qui encapsulent)
+        if len(imgs.shape) == 5 and imgs.shape[0] == 1:  # Format (1, B, C, H, W)
+            imgs = imgs.squeeze(0)
+            
+        # Conversion en format NHWC (TensorFlow) depuis NCHW (PyTorch)
+        if len(imgs.shape) == 4 and imgs.shape[1] in [1, 3]:  # Format NCHW
+            imgs = imgs.permute(0, 2, 3, 1).numpy()
+            
+            # Normaliser dans la plage spécifiée si nécessaire
+            if np.min(imgs) < normalize_range[0] or np.max(imgs) > normalize_range[1]:
+                imgs = ((imgs - np.min(imgs)) / (np.max(imgs) - np.min(imgs))) * \
+                      (normalize_range[1] - normalize_range[0]) + normalize_range[0]
+                
+            all_images.append(imgs)
+            
+    # Concaténer toutes les images
+    if all_images:
+        all_images_array = np.concatenate(all_images, axis=0)
         
-        # Conversion en batch
-        tf_imgs = FrameworkBridge.pytorch_to_tensorflow(imgs, normalize_range=normalize_range)
-        converted_data.append(tf_imgs)
-    
-    # Combiner tous les batches en un seul dataset TensorFlow
-    return tf.data.Dataset.from_tensor_slices(converted_data).batch(batch_size)
+        # Créer un dataset TensorFlow à partir de toutes les images
+        tf_dataset = tf.data.Dataset.from_tensor_slices(all_images_array)
+        tf_dataset = tf_dataset.shuffle(buffer_size=len(all_images_array)).batch(batch_size)
+        tf_dataset = tf_dataset.prefetch(tf.data.AUTOTUNE)
+        
+        return tf_dataset
+    else:
+        raise ValueError("Aucune donnée n'a pu être convertie au format TensorFlow.")
 
 def get_gan_data_loader(source, batch_size=32, image_size=64, preconvert=False):
     """

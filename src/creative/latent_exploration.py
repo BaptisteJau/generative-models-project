@@ -536,3 +536,51 @@ class LatentExplorer:
         plt.show()
         
         return grid
+    
+    def style_mixing(self, num_samples=3, levels=[0.3, 0.7]):
+        """
+        Génère des images avec mélange de styles en interpolant à différents niveaux
+        
+        Args:
+            num_samples: Nombre d'images source pour le mélange
+            levels: Niveaux d'interpolation à appliquer
+            
+        Returns:
+            Grid d'images montrant les mélanges de style
+        """
+        # Générer des vecteurs latents sources
+        source_noise = np.random.normal(0, 1, (num_samples, self.model.latent_dim))
+        
+        # Générer les images mélangées
+        grid_size = num_samples + 1
+        result = np.zeros((grid_size * 64, grid_size * 64, 3))
+        
+        # Générer les images sources (première ligne et colonne)
+        source_images = self.model.generate_images(noise=source_noise)
+        
+        # Première ligne: images source
+        for i in range(num_samples):
+            result[0:64, (i+1)*64:(i+2)*64] = source_images[i]
+        
+        # Première colonne: images source
+        for i in range(num_samples):
+            result[(i+1)*64:(i+2)*64, 0:64] = source_images[i]
+        
+        # Remplir la grille avec les mélanges
+        for i in range(num_samples):
+            for j in range(num_samples):
+                # Créer un mélange entre les sources i et j
+                mixed_noise = np.zeros_like(source_noise[0])
+                
+                # Mélanger à différents niveaux selon le type de caractéristique
+                for level_idx, level in enumerate(levels):
+                    start_dim = int(level * self.model.latent_dim)
+                    end_dim = int((levels[level_idx+1] if level_idx < len(levels)-1 else 1.0) * self.model.latent_dim)
+                    mixed_noise[start_dim:end_dim] = source_noise[j][start_dim:end_dim]
+                    mixed_noise[:start_dim] = source_noise[i][:start_dim]
+                
+                # Générer l'image mélangée
+                mixed_img = self.model.generate_images(noise=mixed_noise.reshape(1, -1))[0]
+                result[(i+1)*64:(i+2)*64, (j+1)*64:(j+2)*64] = mixed_img
+        
+        return result

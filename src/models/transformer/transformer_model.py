@@ -39,68 +39,69 @@ class TransformerModel(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
                 
-    def forward(self, src, trg=None, src_mask=None, trg_mask=None, 
-                src_padding_mask=None, trg_padding_mask=None, labels=None):
+    # Ajouter cette méthode pour une meilleure gestion de la mémoire
+    def get_attention_mask(self, src, pad_token_id=0):
+        """
+        Crée un masque d'attention pour ignorer les tokens de padding
+        
+        Args:
+            src: Tensor d'entrée [batch_size, seq_len]
+            pad_token_id: ID du token de padding à masquer
+            
+        Returns:
+            Masque booléen [batch_size, seq_len]
+        """
+        return src == pad_token_id
+
+    # Améliorer la méthode forward pour une meilleure gestion des masques
+    def forward(self, src, trg=None, src_mask=None, trg_mask=None):
         """
         Forward pass du modèle Transformer
         
         Args:
-            src: Tensor d'entrée source [batch_size, seq_len]
-            trg: Tensor d'entrée cible [batch_size, seq_len] (peut être None pour l'inférence)
-            src_mask: Masque pour la séquence source
-            trg_mask: Masque pour la séquence cible
-            src_padding_mask: Masque de padding pour la séquence source
-            trg_padding_mask: Masque de padding pour la séquence cible
-            labels: Étiquettes pour le calcul de la perte (peut être identique à trg)
+            src: Tensor d'entrée [batch_size, seq_len]
+            trg: Tensor cible optionnel [batch_size, seq_len]
+            src_mask: Masque source optionnel
+            trg_mask: Masque cible optionnel
             
         Returns:
-            Si labels est fourni: tuple (logits de sortie, perte)
-            Sinon: logits de sortie
+            Logits de sortie [batch_size, seq_len, vocab_size]
         """
-        # Si trg n'est pas fourni mais labels l'est, utiliser labels comme cible
-        if trg is None and labels is not None:
-            trg = labels
-            
-        # Appliquer l'embedding et l'encodage positionnel à la source
+        # Obtenir des embeddings pour la source
         src = self.embedding(src) * math.sqrt(self.d_model)
         src = self.positional_encoding(src)
         
-        # Pour la cible également si elle est fournie
+        # Générer un masque carré correct pour l'auto-attention
+        if src_mask is None:
+            # Créer un masque carré (seq_len, seq_len) où chaque position est visible
+            seq_len = src.size(1)
+            src_mask = torch.zeros((seq_len, seq_len), device=src.device).bool()
+        
+        # Pour la génération autoregressive
         if trg is not None:
             trg = self.embedding(trg) * math.sqrt(self.d_model)
             trg = self.positional_encoding(trg)
             
-            # Créer un masque d'attention pour empêcher les positions de regarder les positions futures
+            # Créer un masque causal pour le décodeur si non fourni
             if trg_mask is None:
-                trg_mask = self.generate_square_subsequent_mask(trg.size(1)).to(trg.device)
-        
-        # Passer par le transformer
-        if trg is not None:
-            output = self.transformer(src, trg, src_mask, trg_mask,
-                                     src_padding_mask, trg_padding_mask)
-        else:
-            # En mode inférence, nous n'avons pas de cible
-            # Utiliser src comme entrée du décodeur 
-            output = self.transformer(src, src, src_mask, None,
-                                     src_padding_mask, None)
-        
-        # Passer par la couche de sortie
-        output = self.fc_out(output)
-        
-        # Calculer la perte si les labels sont fournis
-        loss = None
-        if labels is not None:
-            # Reshape pour correspondre à l'attente de CrossEntropyLoss
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(output.view(-1, self.vocab_size), labels.view(-1))
-            return output, loss
+                seq_len = trg.size(1)
+                # Masque causal: les positions futures sont masquées
+                trg_mask = self.generate_square_subsequent_mask(seq_len).to(trg.device)
             
-        return output
+            # Forward pass à travers le transformer
+            output = self.transformer(src, trg, src_mask, trg_mask)
+            output = self.fc_out(output)
+        else:
+            # Utilisation du mode encodeur uniquement (pour l'inférence)
+            output = self.transformer.encoder(src, src_mask)
+            output = self.fc_out(output)
         
-    def generate_square_subsequent_mask(self, sz):
-        """Génère un masque pour empêcher l'attention aux positions futures."""
-        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return output
+
+    def generate_square_subsequent_mask(self, size):
+        """Génère un masque carré causal"""
+        mask = torch.triu(torch.ones(size, size), diagonal=1)
+        mask = mask.masked_fill(mask==1, float('-inf'))
         return mask
         
     def generate_text(self, start_tokens, max_length=100, temperature=0.7, top_k=50, top_p=0.95, repetition_penalty=1.2):
@@ -226,21 +227,8 @@ class TransformerModel(nn.Module):
             
             return cur_tokens
 
-    def generate(self, prompt, max_length=150, temperature=0.7, top_k=50, top_p=0.95, repetition_penalty=1.2):
-        """
-        Génère du texte à partir d'un prompt en texte brut
-        
-        Args:
-            prompt: Texte de départ (string)
-            max_length: Longueur maximale de la séquence générée
-            temperature: Contrôle la randomisation (0.7 = équilibre)
-            top_k: Limite les choix aux k tokens les plus probables
-            top_p: Échantillonnage nucleus (0.95 = 95% de la masse de probabilité) 
-            repetition_penalty: Pénalise les tokens déjà utilisés
-
-        Returns:
-            Texte généré (string)
-        """
+    def generate(self, prompt, max_length=150, temperature=0.7, top_k=50, top_p=0.95, repetition_penalty=1.5):
+        """Génère du texte avec anti-répétition renforcé"""
         try:
             # Tokeniser le prompt
             from src.utils.text_utils import tokenize_text, detokenize_text
@@ -248,12 +236,12 @@ class TransformerModel(nn.Module):
             if not tokens:
                 return "Erreur: impossible de tokeniser le prompt"
                 
-            # Convertir en tensor pour la génération
+            # Convertir en tensor
             start_tokens = torch.tensor([tokens], device=next(self.parameters()).device)
             
-            # Générer la séquence
+            # Générer la séquence 
             generated = self.generate_text(
-                start_tokens,
+                start_tokens, 
                 max_length=max_length,
                 temperature=temperature,
                 top_k=top_k,
@@ -262,7 +250,12 @@ class TransformerModel(nn.Module):
             )
             
             # Convertir les tokens en texte
-            return detokenize_text(generated[0].cpu().numpy())
+            generated_text = detokenize_text(generated[0].cpu().numpy())
+            
+            # Appliquer le nettoyage des répétitions pathologiques
+            clean_text = clean_repetitions(generated_text)
+            
+            return clean_text
         except Exception as e:
             return f"[ERROR] Génération échouée: {str(e)}"
 
@@ -283,3 +276,30 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
+
+def clean_repetitions(text):
+    """Nettoie les répétitions pathologiques dans le texte généré"""
+    import re
+    
+    # 1. Répétition de mots consécutifs
+    pattern1 = r'\b(\w+)(\s+\1){2,}\b'
+    while re.search(pattern1, text):
+        text = re.sub(pattern1, r'\1', text)
+    
+    # 2. Répétition de groupes de mots (2-4 mots)
+    for n in range(2, 5):
+        # Capture un groupe de n mots qui se répètent au moins 2 fois
+        pattern = r'((?:\w+\W+){' + str(n) + r'})(\1)+'
+        while re.search(pattern, text):
+            # Remplace par une seule occurrence
+            text = re.sub(pattern, r'\1', text)
+    
+    # 3. Répétition excessive de caractères individuels (plus de 3 fois)
+    pattern3 = r'([^\w\s])(\1{3,})'  # Caractères non alphanumériques
+    text = re.sub(pattern3, r'\1\1', text)
+    
+    # 4. Répétition excessive de ponctuations
+    pattern4 = r'([,.!?;:]){3,}'
+    text = re.sub(pattern4, r'\1\1', text)
+    
+    return text

@@ -82,7 +82,7 @@ class GANTrainer(BaseTrainer):
             args = {'train_loader': self.train_loader}
             
             if 'epochs' in train_params:
-                args['epochs'] = self.epochs
+                args['epochs'] = self.num_epochs  # CORRECTION: self.epochs → self.num_epochs
             
             if 'log_interval' in train_params:
                 args['log_interval'] = self.config.get('log_interval', 10)
@@ -102,13 +102,13 @@ class GANTrainer(BaseTrainer):
             # Historique d'entraînement
             history = {"d_loss": [], "g_loss": [], "d_acc": []}
             
-            for epoch in range(self.epochs):
+            for epoch in range(self.num_epochs):  # CORRECTION: self.epochs → self.num_epochs
                 d_losses = []
                 g_losses = []
                 d_accs = []
                 
                 # Barre de progression
-                pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs}")
+                pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}")
                 
                 for real_images in pbar:
                     # Déplacer sur le device approprié
@@ -185,7 +185,7 @@ class GANTrainer(BaseTrainer):
                 history['g_loss'].append(epoch_g_loss)
                 history['d_acc'].append(epoch_d_acc)
                 
-                print(f"Epoch {epoch+1}/{self.epochs} - D Loss: {epoch_d_loss:.4f}, G Loss: {epoch_g_loss:.4f}, D Acc: {epoch_d_acc:.2f}")
+                print(f"Epoch {epoch+1}/{self.num_epochs} - D Loss: {epoch_d_loss:.4f}, G Loss: {epoch_g_loss:.4f}, D Acc: {epoch_d_acc:.2f}")
                 
                 # Sauvegarder des exemples générés
                 if (epoch + 1) % self.save_interval == 0:
@@ -264,7 +264,7 @@ class DiffusionTrainer(BaseTrainer):
         """Entraîner le modèle de diffusion"""
         # Pour les modèles qui ont leur propre méthode d'entraînement
         if hasattr(self.model, 'train') and callable(getattr(self.model, 'train')):
-            return self.model.train(self.train_loader, epochs=self.epochs)
+            return self.model.train(self.train_loader, epochs=self.num_epochs)
         
         # Implémentation manuelle pour les modèles sans méthode train
         else:
@@ -276,12 +276,12 @@ class DiffusionTrainer(BaseTrainer):
             )
             
             # Boucle d'entraînement
-            for epoch in range(self.epochs):
+            for epoch in range(self.num_epochs):
                 epoch_loss = 0.0
                 num_batches = 0
                 
                 # Barre de progression
-                pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs}")
+                pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}")
                 
                 for batch in pbar:
                     # Extraire les images
@@ -326,7 +326,7 @@ class DiffusionTrainer(BaseTrainer):
                 avg_loss = epoch_loss / num_batches
                 history["loss"].append(avg_loss)
                 
-                print(f"Epoch {epoch+1}/{self.epochs} - Loss: {avg_loss:.4f}")
+                print(f"Epoch {epoch+1}/{self.num_epochs} - Loss: {avg_loss:.4f}")
                 
                 # Générer des échantillons périodiquement
                 if (epoch + 1) % self.sample_interval == 0:

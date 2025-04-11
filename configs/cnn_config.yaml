@@ -1,27 +1,37 @@
-learning_rate: 0.001
+# learning_rate: 0.0002  # Réduit pour plus de stabilité
+# batch_size: 128        # Augmenté pour accélérer l'entraînement
+# num_epochs: 30         # Réduit de 100 à 30 pour un temps d'exécution raisonnable
+# input_shape:
+#   height: 64          # Augmenté pour meilleure qualité visuelle
+#   width: 64
+#   channels: 3
+# num_classes: 10
+# optimizer: Adam
+# loss_function: categorical_crossentropy
+# dropout_rate: 0.3      # Réduit pour accélérer l'apprentissage
+# augmentation:
+#   rotation_range: 10   # Réduit pour accélérer
+#   width_shift_range: 0.1
+#   height_shift_range: 0.1
+#   horizontal_flip: true
+#   fill_mode: nearest
+# latent_dim: 100        # Augmenté pour meilleure expressivité du modèle
+# use_subset: true
+# subset_size: 0.5       # Augmenté de 0.3 à 0.5 pour un meilleur apprentissage
+# log_interval: 200      # Réduit la fréquence des logs
+# plot_interval: 2000    # Réduit la fréquence des visualisations
+# save_interval: 5       # Sauvegarde plus fréquente des checkpoints
+# preconvert: true
+# use_amp: true          # Garde la précision mixte pour l'accélération
+
+# Exemple de configuration pour un CNN (GAN)
 batch_size: 64
-num_epochs: 20
+learning_rate: 0.0002
+dataset_name: "cifar10"  # ou "celeba" ou chemin personnalisé
 input_shape:
-  height: 32
-  width: 32
+  height: 64
+  width: 64
   channels: 3
-num_classes: 10
-optimizer: Adam
-loss_function: categorical_crossentropy
-dropout_rate: 0.5
-augmentation:
-  rotation_range: 20
-  width_shift_range: 0.2
-  height_shift_range: 0.2
-  shear_range: 0.2
-  zoom_range: 0.2
-  horizontal_flip: true
-  fill_mode: nearest
-latent_dim: 64
-use_subset: true
-subset_size: 0.3
-log_interval: 100
-plot_interval: 1000
-save_interval: 10
-preconvert: true
-use_amp: true
+latent_dim: 100
+use_spectral_norm: true
+use_wasserstein: true

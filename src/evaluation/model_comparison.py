@@ -219,8 +219,58 @@ class ModelComparator:
             # Ajuster la qualité en fonction de la diversité
             avg_word_len = sum(len(w) for w in all_words) / max(1, len(all_words))
             metrics["quality"] = min(0.95, (lexical_diversity * 0.4) + (min(avg_word_len/10, 0.4)) + 0.2)
+        
+        # Ajouter l'analyse des répétitions
+        repetition_scores = []
+        for text in samples:
+            if isinstance(text, str) and text.strip():
+                repetition_score = self.detect_repetition(text)
+                repetition_scores.append(repetition_score)
+        
+        if repetition_scores:
+            avg_repetition = sum(repetition_scores) / len(repetition_scores)
+            metrics["repetition_rate"] = avg_repetition
+            # Pénaliser la qualité en fonction des répétitions
+            metrics["quality"] = metrics["quality"] * (1.0 - avg_repetition * 0.8)
             
         return metrics
+
+    def detect_repetition(self, text, min_repeat_length=3):
+        """
+        Détecte les répétitions excessives dans le texte généré
+        
+        Args:
+            text: Texte généré à analyser
+            min_repeat_length: Longueur minimale pour considérer une répétition
+        
+        Returns:
+            Pourcentage de répétition détectée (0.0-1.0)
+        """
+        if not text or len(text) < 10:
+            return 0.0
+            
+        words = text.split()
+        total_words = len(words)
+        
+        # Détection des mots répétés consécutivement
+        repetitions = 0
+        current_word = None
+        repeat_count = 0
+        
+        for word in words:
+            if word == current_word:
+                repeat_count += 1
+            else:
+                if repeat_count >= min_repeat_length:
+                    repetitions += repeat_count
+                current_word = word
+                repeat_count = 1
+        
+        # Ajouter la dernière séquence si applicable
+        if repeat_count >= min_repeat_length:
+            repetitions += repeat_count
+            
+        return min(1.0, repetitions / max(1, total_words))
 
     def plot_comparison_charts(self):
         """
@@ -317,14 +367,19 @@ class ModelComparator:
         # Générer les graphiques
         self.plot_comparison_charts()
         
-        # Créer le rapport HTML avec encodage UTF-8 correct
+        # Créer le rapport HTML avec encodage UTF-8 explicite
         report_path = os.path.join(self.output_dir, 'comparison_report.html')
         with open(report_path, 'w', encoding='utf-8') as f:
-            # En-tête du document avec déclaration d'encodage explicite
-            f.write('<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n')
+            # En-tête HTML avec déclaration d'encodage explicite
+            f.write('''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparaison de Modèles Génératifs</title>
+''')
             f.write('''
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Comparaison de Modèles Génératifs</title>
             <style>
                 body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 1000px; margin: 0 auto; padding: 20px; }
                 h1, h2, h3 { color: #333; }
