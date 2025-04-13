@@ -5,259 +5,192 @@ import math
 
 class TransformerModel(nn.Module):
     def __init__(self, vocab_size, d_model=512, nhead=8, num_encoder_layers=6, 
-                 num_decoder_layers=6, dim_feedforward=2048, dropout=0.1):
+                 num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
+                 use_layer_norm=False, norm_first=False):
         super(TransformerModel, self).__init__()
+        
+        # Stocker explicitement la taille du vocabulaire
+        self.vocab_size = vocab_size
         
         # Embedding et positional encoding
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, dropout)
         
-        # Transformer
-        self.transformer = nn.Transformer(
+        # LayerNorm supplémentaire avant et après les embeddings
+        self.use_layer_norm = use_layer_norm
+        if use_layer_norm:
+            self.emb_norm = nn.LayerNorm(d_model)
+        
+        # Transformer avec normalisation pré-attention si demandé
+        encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
-            num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            batch_first=True  # Important pour la cohérence des dimensions
+            batch_first=True,
+            norm_first=norm_first  # Pre-LN ou Post-LN architecture
+        )
+        
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=norm_first
+        )
+        
+        encoder_norm = nn.LayerNorm(d_model)
+        decoder_norm = nn.LayerNorm(d_model)
+        
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, 
+            num_encoder_layers,
+            norm=encoder_norm
+        )
+        
+        self.transformer_decoder = nn.TransformerDecoder(
+            decoder_layer, 
+            num_decoder_layers,
+            norm=decoder_norm
         )
         
         # Couche de sortie (projection vers le vocabulaire)
         self.fc_out = nn.Linear(d_model, vocab_size)
         
         # Pour initialiser les paramètres
-        self.init_weights()
-        
-        # Stockage des dimensions pour référence
-        self.d_model = d_model
-        self.vocab_size = vocab_size
-        
-    def init_weights(self):
-        # Initialisation standard des poids pour les transformers
+        self._init_parameters()
+    
+    def _init_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-                
-    # Ajouter cette méthode pour une meilleure gestion de la mémoire
-    def get_attention_mask(self, src, pad_token_id=0):
+    
+    def forward(self, src):
+        # src shape: [batch_size, seq_len]
+        
+        # Créer un masque pour empêcher l'attention aux positions futures
+        src_mask = generate_square_subsequent_mask(src.size(1)).to(src.device)
+        
+        # Embedding + positional encoding
+        src_emb = self.embedding(src) * math.sqrt(self.embedding.embedding_dim)
+        src_emb = self.positional_encoding(src_emb)
+        
+        # LayerNorm supplémentaire sur les embeddings si activée
+        if self.use_layer_norm:
+            src_emb = self.emb_norm(src_emb)
+        
+        # Pas de masque de padding pour simplifier
+        memory = self.transformer_encoder(src_emb)
+        output = self.transformer_decoder(src_emb, memory, tgt_mask=src_mask)
+        
+        return self.fc_out(output)
+        
+    # Ajout d'une fonction auxiliaire pour générer le masque causal
+    def generate(self, prompt, max_length=100, temperature=0.9, top_k=40, top_p=0.92, repetition_penalty=1.5):
         """
-        Crée un masque d'attention pour ignorer les tokens de padding
+        Génération de texte améliorée avec techniques anti-répétition
         
         Args:
-            src: Tensor d'entrée [batch_size, seq_len]
-            pad_token_id: ID du token de padding à masquer
-            
-        Returns:
-            Masque booléen [batch_size, seq_len]
-        """
-        return src == pad_token_id
-
-    # Améliorer la méthode forward pour une meilleure gestion des masques
-    def forward(self, src, trg=None, src_mask=None, trg_mask=None):
-        """
-        Forward pass du modèle Transformer
-        
-        Args:
-            src: Tensor d'entrée [batch_size, seq_len]
-            trg: Tensor cible optionnel [batch_size, seq_len]
-            src_mask: Masque source optionnel
-            trg_mask: Masque cible optionnel
-            
-        Returns:
-            Logits de sortie [batch_size, seq_len, vocab_size]
-        """
-        # Obtenir des embeddings pour la source
-        src = self.embedding(src) * math.sqrt(self.d_model)
-        src = self.positional_encoding(src)
-        
-        # Générer un masque carré correct pour l'auto-attention
-        if src_mask is None:
-            # Créer un masque carré (seq_len, seq_len) où chaque position est visible
-            seq_len = src.size(1)
-            src_mask = torch.zeros((seq_len, seq_len), device=src.device).bool()
-        
-        # Pour la génération autoregressive
-        if trg is not None:
-            trg = self.embedding(trg) * math.sqrt(self.d_model)
-            trg = self.positional_encoding(trg)
-            
-            # Créer un masque causal pour le décodeur si non fourni
-            if trg_mask is None:
-                seq_len = trg.size(1)
-                # Masque causal: les positions futures sont masquées
-                trg_mask = self.generate_square_subsequent_mask(seq_len).to(trg.device)
-            
-            # Forward pass à travers le transformer
-            output = self.transformer(src, trg, src_mask, trg_mask)
-            output = self.fc_out(output)
-        else:
-            # Utilisation du mode encodeur uniquement (pour l'inférence)
-            output = self.transformer.encoder(src, src_mask)
-            output = self.fc_out(output)
-        
-        return output
-
-    def generate_square_subsequent_mask(self, size):
-        """Génère un masque carré causal"""
-        mask = torch.triu(torch.ones(size, size), diagonal=1)
-        mask = mask.masked_fill(mask==1, float('-inf'))
-        return mask
-        
-    def generate_text(self, start_tokens, max_length=100, temperature=0.7, top_k=50, top_p=0.95, repetition_penalty=1.2):
-        """
-        Génère du texte amélioré à partir de tokens de départ avec diverses techniques anti-répétition
-        
-        Args:
-            start_tokens: Tensor contenant les tokens de départ [batch_size, seq_len]
-            max_length: Longueur maximale de la séquence à générer
-            temperature: Contrôle la randomisation (0.7 = équilibre entre créativité et cohérence)
-            top_k: Limite les choix aux k tokens les plus probables (50 = valeur recommandée)
-            top_p: Échantillonnage nucleus (0.95 = 95% de la masse de probabilité)
-            repetition_penalty: Pénalise les tokens déjà utilisés (>1.0 réduit les répétitions)
-            
-        Returns:
-            Tensor contenant les tokens générés [batch_size, max_length]
+            prompt: Texte ou tokens de départ
+            max_length: Longueur maximale à générer
+            temperature: Contrôle la créativité (>1 plus créatif, <1 plus conservateur)
+            top_k: Nombre de tokens les plus probables à considérer (0 pour désactiver)
+            top_p: Fraction de la masse de probabilité à considérer (1.0 pour désactiver)
+            repetition_penalty: Pénalité pour répéter des tokens (>1.0 pénalise les répétitions)
         """
         self.eval()
-        with torch.no_grad():
-            device = next(self.parameters()).device
-            batch_size = start_tokens.shape[0]
-            cur_tokens = start_tokens.clone()
-            
-            # Garder trace des tokens récemment générés pour pénaliser les répétitions
-            recent_tokens_window = min(100, start_tokens.shape[1] + max_length)  # Évite les valeurs trop grandes
-            
-            for i in range(max_length - start_tokens.shape[1]):
-                # Limiter le contexte si trop long pour économiser la mémoire
-                if cur_tokens.shape[1] > 1024:
-                    cur_tokens = cur_tokens[:, -1024:]
-                    
-                # Obtenir les prédictions pour la séquence actuelle
-                logits = self(cur_tokens)
+        device = next(self.parameters()).device
+        
+        # Tokeniser le prompt
+        if isinstance(prompt, str):
+            if hasattr(self, 'tokenizer'):
+                tokens = self.tokenizer.encode(prompt, add_special_tokens=False)
+                input_ids = torch.tensor([tokens]).to(device)
+            else:
+                # Fallback simple: encoder par caractère
+                input_ids = torch.tensor([[ord(c) % 256 for c in prompt]]).to(device)
+        else:
+            input_ids = prompt.to(device)
+        
+        # Historique pour la détection des répétitions
+        generated_tokens = input_ids[0].tolist().copy()
+        
+        for _ in range(max_length):
+            with torch.no_grad():
+                # Forward pass pour obtenir les prédictions
+                outputs = self(input_ids)
+                next_token_logits = outputs[:, -1, :].clone()
                 
-                # Extraire les logits pour le prochain token (dernier de la séquence)
-                next_token_logits = logits[:, -1, :].clone()
+                # 1. Appliquer la température
+                next_token_logits = next_token_logits / max(0.7, temperature)
                 
-                # Appliquer la pénalité de répétition
-                if cur_tokens.shape[1] > 1 and repetition_penalty != 1.0:
-                    # Identifier les tokens déjà utilisés récemment
-                    last_tokens = cur_tokens[:, -min(recent_tokens_window, cur_tokens.shape[1]):]
-                    
-                    # Pour chaque batch
-                    for batch_idx in range(batch_size):
-                        # Créer un tensor unique de tokens utilisés (pour éviter les doublons)
-                        used_tokens = torch.unique(last_tokens[batch_idx])
-                        
-                        # Filtrer les tokens invalides (comme le padding)
-                        valid_tokens = used_tokens[used_tokens > 0]
-                        
-                        # Pénaliser les tokens déjà utilisés
-                        if len(valid_tokens) > 0:  # Vérifier qu'il y a des tokens valides
-                            # Créer un masque pour la pénalisation
-                            if repetition_penalty > 1.0:
-                                # Pénaliser les tokens répétés (diminuer leur probabilité)
-                                next_token_logits[batch_idx, valid_tokens] /= repetition_penalty
-                            else:
-                                # Favoriser les tokens répétés (augmenter leur probabilité)
-                                next_token_logits[batch_idx, valid_tokens] *= repetition_penalty
+                # 2. Pénaliser les répétitions
+                if repetition_penalty > 1.0:
+                    # Vérifier les 10 derniers tokens pour éviter les répétitions locales
+                    recent_tokens = generated_tokens[-10:]
+                    for token_id in set(recent_tokens):
+                        # Compter les occurrences
+                        count = recent_tokens.count(token_id)
+                        if count > 1 and token_id < next_token_logits.size(1):
+                            # Pénalité proportionnelle au nombre d'occurrences
+                            penalty = repetition_penalty * (1 + 0.1 * (count - 1))
+                            next_token_logits[0, token_id] /= penalty
                 
-                # Appliquer la température pour contrôler la randomisation
-                next_token_logits = next_token_logits / temperature
-                
-                # Masquer les tokens de faible probabilité (sampling top-k)
+                # 3. Top-K sampling
                 if top_k > 0:
-                    # Conserver uniquement les top_k tokens les plus probables
-                    top_k = min(top_k, next_token_logits.size(-1))  # Cas où top_k > taille vocabulaire
-                    
-                    # Identifier les valeurs et indices des top-k tokens pour chaque exemple dans le batch
-                    values, indices = torch.topk(next_token_logits, top_k, dim=-1)
-                    
-                    # Créer un masque pour filtrer uniquement les top-k tokens
-                    mask = torch.zeros_like(next_token_logits).scatter_(1, indices, 1)
-                    next_token_logits = torch.where(mask.bool(), next_token_logits, 
-                                                  torch.full_like(next_token_logits, float('-inf')))
+                    top_k = min(top_k, next_token_logits.size(-1))
+                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                    next_token_logits[indices_to_remove] = float('-inf')
                 
-                # Échantillonnage nucleus (top-p)
-                if 0.0 < top_p < 1.0:
-                    # Calculer les probabilités (softmax)
-                    probs = F.softmax(next_token_logits, dim=-1)
+                # 4. Top-p (nucleus) sampling
+                if 0 < top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
                     
-                    # Trier les probabilités par ordre décroissant
-                    sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)
+                    # Supprimer les tokens avec une probabilité cumulative > top_p
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    # Toujours garder le premier token
+                    sorted_indices_to_remove[..., 0] = 0
+                    # Décalage pour appliquer sur les bons indices
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                     
-                    # Calculer la probabilité cumulative
-                    cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-                    
-                    # Créer un masque pour les tokens dont la probabilité cumulative < top_p
-                    nucleus_mask = cumulative_probs < top_p
-                    
-                    # S'assurer qu'au moins un token est inclus
-                    nucleus_mask[:, 0] = True
-                    
-                    # Pour chaque élément du batch, inclure tous les tokens jusqu'au dernier qui respecte top_p
-                    limit_indices = torch.sum(nucleus_mask, dim=1, keepdim=True)
-                    for batch_idx in range(batch_size):
-                        nucleus_mask[batch_idx, :limit_indices[batch_idx]] = True
-                    
-                    # Obtenir les indices des tokens à conserver dans l'ordre original
-                    tokens_to_keep = torch.gather(sorted_indices, 1, 
-                                                 torch.where(nucleus_mask, 
-                                                           torch.arange(sorted_indices.size(1), device=device).expand_as(nucleus_mask),
-                                                           torch.zeros_like(nucleus_mask, dtype=torch.long)))
-                    
-                    # Reconstruire les logits filtrés
-                    next_token_logits_filtered = torch.full_like(next_token_logits, float('-inf'))
-                    
-                    # Pour chaque batch, mettre à jour les logits des tokens conservés
-                    for batch_idx in range(batch_size):
-                        batch_tokens = tokens_to_keep[batch_idx, nucleus_mask[batch_idx]]
-                        batch_probs = sorted_probs[batch_idx, nucleus_mask[batch_idx]]
-                        next_token_logits_filtered[batch_idx, batch_tokens] = torch.log(batch_probs)
-                    
-                    next_token_logits = next_token_logits_filtered
+                    # Créer un masque pour les logits originaux
+                    indices_to_remove = torch.zeros_like(next_token_logits, dtype=torch.bool)
+                    indices_to_remove = indices_to_remove.scatter(
+                        dim=-1, index=sorted_indices, src=sorted_indices_to_remove.unsqueeze(0)
+                    )
+                    next_token_logits[indices_to_remove] = float('-inf')
                 
-                # Échantillonner le prochain token
-                # On utilise les probabilités directement au lieu des logits pour éviter des problèmes numériques
-                probs = F.softmax(next_token_logits, dim=-1)
+                # 5. Échantillonnage selon la distribution de probabilité
+                probs = torch.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
                 
-                # Ajouter le nouveau token à la séquence
-                cur_tokens = torch.cat([cur_tokens, next_token], dim=1)
-            
-            return cur_tokens
-
-    def generate(self, prompt, max_length=150, temperature=0.7, top_k=50, top_p=0.95, repetition_penalty=1.5):
-        """Génère du texte avec anti-répétition renforcé"""
-        try:
-            # Tokeniser le prompt
-            from src.utils.text_utils import tokenize_text, detokenize_text
-            tokens = tokenize_text(prompt)
-            if not tokens:
-                return "Erreur: impossible de tokeniser le prompt"
+                # 6. Vérifier si on génère un token de fin de séquence
+                if hasattr(self, 'tokenizer') and next_token.item() == self.tokenizer.vocab.get('<eos>', -1):
+                    break
                 
-            # Convertir en tensor
-            start_tokens = torch.tensor([tokens], device=next(self.parameters()).device)
-            
-            # Générer la séquence 
-            generated = self.generate_text(
-                start_tokens, 
-                max_length=max_length,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                repetition_penalty=repetition_penalty
-            )
-            
-            # Convertir les tokens en texte
-            generated_text = detokenize_text(generated[0].cpu().numpy())
-            
-            # Appliquer le nettoyage des répétitions pathologiques
-            clean_text = clean_repetitions(generated_text)
-            
-            return clean_text
-        except Exception as e:
-            return f"[ERROR] Génération échouée: {str(e)}"
+                # 7. Ajouter le token à la séquence d'entrée
+                input_ids = torch.cat((input_ids, next_token), dim=1)
+                generated_tokens.append(next_token.item())
+        
+        # Convertir les tokens en texte
+        if hasattr(self, 'tokenizer'):
+            output_text = self.tokenizer.decode(generated_tokens)
+        else:
+            # Fallback
+            output_text = "".join([chr(min(t, 127)) for t in generated_tokens])
+        
+        # Post-traitement pour nettoyer les répétitions
+        output_text = clean_repetitions(output_text)
+        
+        return output_text
+
+def generate_square_subsequent_mask(sz):
+    """Génère un masque causal pour l'auto-attention"""
+    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+    return mask
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):

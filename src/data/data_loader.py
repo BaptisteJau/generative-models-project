@@ -11,6 +11,9 @@ import requests
 import zipfile
 import io
 import yaml
+# Ajouter l'import pour notre nouveau dataset
+from src.data.transformer_dataset import TransformerTextDataset
+import requests
 
 def get_data_dir():
     """Return the path to the data directory, creating it if it doesn't exist"""
@@ -360,58 +363,6 @@ def get_diffusion_data_loader(source, batch_size=32, image_size=64):
     
     return train_loader
 
-class TransformerTextDataset(Dataset):
-    def __init__(self, text_data=None, text_path=None, tokenizer=None, block_size=128):
-        """
-        Dataset pour modèles Transformer de génération de texte
-        
-        Args:
-            text_data: Texte brut ou chemin vers un fichier texte
-            tokenizer: Tokenizer à utiliser (si None, utilise GPT2Tokenizer)
-            block_size: Taille maximale des séquences
-        """
-        self.block_size = block_size
-        
-        # Pour compatibilité avec les appels existants
-        if text_data is None and text_path is not None:
-            text_data = text_path
-        
-        # Charger le texte si c'est un chemin de fichier
-        if isinstance(text_data, str) and os.path.isfile(text_data):
-            with open(text_data, 'r', encoding='utf-8') as f:
-                text_data = f.read()
-        
-        # Initialiser le tokenizer
-        if tokenizer is None:
-            from transformers import GPT2Tokenizer
-            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            # Ajout de token spécial si nécessaire pour GPT2
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        else:
-            self.tokenizer = tokenizer
-        
-        # Tokenize le texte
-        self.encodings = self.tokenizer(text_data, return_tensors='pt', truncation=True)
-        self.input_ids = self.encodings.input_ids[0]
-        
-        # Stocker les exemples sous forme de liste pour __len__
-        self.examples = []
-        for i in range(0, len(self.input_ids) - block_size + 1, 1):  # Step par 1 pour maximiser le nombre de séquences
-            self.examples.append((
-                self.input_ids[i:i+block_size],
-                self.input_ids[i+1:i+block_size+1]
-            ))
-        
-        # Stocker la taille du vocabulaire
-        self.vocab_size = len(self.tokenizer)
-    
-    def __len__(self):
-        return len(self.examples)
-    
-    def __getitem__(self, idx):
-        inputs, targets = self.examples[idx]
-        return inputs, targets
-
 def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokenizer=None, block_size=128):
     """
     Get data loaders for transformer models
@@ -449,7 +400,7 @@ def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokeni
     )
     
     # Get vocab size from the dataset's tokenizer for model creation
-    vocab_size = len(transformer_dataset.tokenizer.vocab) if hasattr(transformer_dataset.tokenizer, 'vocab') else transformer_dataset.tokenizer.vocab_size
+    vocab_size = len(transformer_dataset.tokenizer.vocab)
     
     # Store the vocab size as an attribute of the dataset for later use
     transformer_dataset.vocab_size = vocab_size
@@ -458,23 +409,21 @@ def get_transformer_data_loader(source='tiny_shakespeare', batch_size=32, tokeni
     train_size = int(0.9 * len(transformer_dataset))
     val_size = len(transformer_dataset) - train_size
     
-    train_dataset, val_dataset = random_split(transformer_dataset, [train_size, val_size])
+    train_dataset, val_dataset = torch.utils.data.random_split(transformer_dataset, [train_size, val_size])
     
     # Create data loaders
-    train_loader = DataLoader(
+    train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=0,
-        collate_fn=transformer_collate_fn  # Ajouter cette ligne
+        num_workers=2
     )
     
-    val_loader = DataLoader(
+    val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0,
-        collate_fn=transformer_collate_fn  # Ajouter cette ligne
+        num_workers=2
     )
     
     return train_loader, val_loader
